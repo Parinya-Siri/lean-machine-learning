@@ -1,0 +1,89 @@
+import tactic.ring
+namespace linear_combo
+open tactic
+lemma left_mul_both_sides {α} [h : has_mul α] {x y : α} (z : α) (h1 : x = y) :
+  z * x = z * y :=
+congr_arg (has_mul.mul z) h1
+lemma sum_two_equations {α} [h : has_add α] {x1 y1 x2 y2 : α} (h1 : x1 = y1)
+  (h2: x2 = y2) : x1 + x2 = y1 + y2 :=
+congr (congr_arg has_add.add h1) h2
+lemma left_minus_right {α} [h : add_group α] {x y : α} (h1 : x = y) :
+  x - y = 0 :=
+sub_eq_zero.mpr h1
+lemma all_on_left_equiv {α} [h : add_group α] (x y : α) :
+  (x = y) = (x - y = 0) :=
+propext (⟨left_minus_right, sub_eq_zero.mp⟩)
+lemma replace_eq_expr {α} [h : has_zero α] {x y : α} (h1 : x = 0) (h2 : y = x) :
+  y = 0 :=
+by rwa h2
+meta structure linear_combination_config : Type :=
+(normalize : bool := tt)
+(normalization_tactic : tactic unit := `[ring1])
+meta def mul_equality_expr (h_equality : expr) (coeff : pexpr) : tactic expr :=
+do
+  `(%%lhs = %%rhs) ← infer_type h_equality,
+meta def sum_equalities (h_equality1 h_equality2 : expr) : tactic expr :=
+mk_app ``sum_two_equations [h_equality1, h_equality2]
+meta def sum_two_hyps_one_mul_helper (h_equality1 h_equality2 : expr)
+  (coeff_for_eq2 : pexpr) : tactic expr :=
+mul_equality_expr h_equality2 coeff_for_eq2 >>= sum_equalities h_equality1
+meta def make_sum_of_hyps_helper (expected_tp : expr) :
+  option (tactic expr) → list expr → list pexpr → tactic expr
+| none [] []                                                             :=
+  to_expr ``(rfl : (0 : %%expected_tp) = 0)
+| (some tactic_hcombo) [] []                                             :=
+  do tactic_hcombo
+| none (h_equality :: h_eqs_names) (coeff :: coeffs)                 :=
+ do
+meta def make_sum_of_hyps (expected_tp : expr) (h_eqs_names : list expr) (coeffs : list pexpr) :
+  tactic expr :=
+make_sum_of_hyps_helper expected_tp none h_eqs_names coeffs
+meta def move_to_left_side (h_equality : expr) : tactic expr :=
+mk_app ``left_minus_right [h_equality]
+meta def move_target_to_left_side : tactic unit :=
+do
+meta def set_goal_to_hleft_eq_tleft (hsum_on_left : expr) : tactic unit :=
+do to_expr ``(replace_eq_expr %%hsum_on_left) >>= apply, skip
+meta def prove_equal_if_desired (config : linear_combination_config) :
+  tactic unit :=
+when config.normalize config.normalization_tactic
+meta def linear_combination (h_eqs_names : list pexpr) (coeffs : list pexpr)
+  (config : linear_combination_config := {}) : tactic unit :=
+do
+  `(@eq %%ext _ _) ← target | fail "linear_combination can only be used to prove equality goals",
+  h_eqs ← h_eqs_names.mmap to_expr,
+  hsum ← make_sum_of_hyps ext h_eqs coeffs,
+  hsum_on_left ← move_to_left_side hsum,
+  move_target_to_left_side,
+  set_goal_to_hleft_eq_tleft hsum_on_left,
+  prove_equal_if_desired config
+meta def mk_mul : list pexpr → pexpr
+| [] := ``(1)
+| [e] := e
+| (e::es) := ``(%%e * %%(mk_mul es))
+meta def as_linear_combo : bool → list pexpr → pexpr → list (pexpr × pexpr)
+| neg ms e :=
+  let (head, args) := pexpr.get_app_fn_args e in
+  match head.get_frozen_name, args with
+  | ``has_add.add, [e1, e2] := as_linear_combo neg ms e1 ++ as_linear_combo neg ms e2
+  | ``has_sub.sub, [e1, e2] := as_linear_combo neg ms e1 ++ as_linear_combo (bnot neg) ms e2
+  | ``has_mul.mul, [e1, e2] := as_linear_combo neg (e1::ms) e2
+  | ``has_neg.neg, [e1] := as_linear_combo (bnot neg) ms e1
+  | _, _ := let m := mk_mul ms in [(e, if neg then ``(-%%m) else m)]
+  end
+section interactive_mode
+setup_tactic_parser
+meta def _root_.tactic.interactive.linear_combination
+  (input : parse (as_linear_combo ff [] <$> texpr)?)
+  (_ : parse (tk "with")?)
+  (config : linear_combination_config := {})
+  : tactic unit :=
+let (h_eqs_names, coeffs) := list.unzip (input.get_or_else []) in
+linear_combination h_eqs_names coeffs config
+add_tactic_doc
+{ name := "linear_combination",
+  category := doc_category.tactic,
+  decl_names := [`tactic.interactive.linear_combination],
+  tags := ["arithmetic"] }
+end interactive_mode
+end linear_combo

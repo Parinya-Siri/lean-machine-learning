@@ -1,0 +1,103 @@
+import tactic.rcases
+class can_lift (α β : Sort*) :=
+(coe : β → α)
+(cond : α → Prop)
+(prf : ∀(x : α), cond x → ∃(y : β), coe y = x)
+open tactic
+@[user_attribute]
+meta def can_lift_attr : user_attribute (list name) :=
+{ name := "_can_lift",
+  descr := "internal attribute used by the lift tactic",
+  parser := failed,
+  cache_cfg :=
+  { mk_cache := λ _,
+      do { ls ← attribute.get_instances `instance,
+          ls.mfilter $ λ l,
+          do { (_,t) ← mk_const l >>= infer_type >>= open_pis,
+          return $ t.is_app_of `can_lift } },
+    dependencies := [`instance] } }
+instance : can_lift ℤ ℕ :=
+⟨coe, λ n, 0 ≤ n, λ n hn, ⟨n.nat_abs, int.nat_abs_of_nonneg hn⟩⟩
+instance pi.can_lift (ι : Sort*) (α : Π i : ι, Sort*) (β : Π i : ι, Sort*)
+  [Π i : ι, can_lift (α i) (β i)] :
+  can_lift (Π i : ι, α i) (Π i : ι, β i) :=
+{ coe := λ f i, can_lift.coe (f i),
+  cond := λ f, ∀ i, can_lift.cond (β i) (f i),
+  prf := λ f hf, ⟨λ i, classical.some (can_lift.prf (f i) (hf i)), funext $ λ i,
+    classical.some_spec (can_lift.prf (f i) (hf i))⟩ }
+instance pi_subtype.can_lift (ι : Sort*) (α : Π i : ι, Sort*) [ne : Π i, nonempty (α i)]
+  (p : ι → Prop) :
+  can_lift (Π i : subtype p, α i) (Π i, α i) :=
+{ coe := λ f i, f i,
+  cond := λ _, true,
+  prf :=
+    begin
+      classical,
+      refine λ f _, ⟨λ i, if hi : p i then f ⟨i, hi⟩ else classical.choice (ne i), funext _⟩,
+      rintro ⟨i, hi⟩,
+      exact dif_pos hi
+    end }
+instance pi_subtype.can_lift' (ι : Sort*) (α : Sort*) [ne : nonempty α] (p : ι → Prop) :
+  can_lift (subtype p → α) (ι → α) :=
+pi_subtype.can_lift ι (λ _, α) p
+instance subtype.can_lift {α : Sort*} (p : α → Prop) : can_lift α {x // p x} :=
+{ coe := coe,
+  cond := p,
+  prf := λ a ha, ⟨⟨a, ha⟩, rfl⟩ }
+namespace tactic
+meta def get_lift_prf (h : option pexpr) (old_tp new_tp inst e : expr)
+  (s : simp_lemmas) (to_unfold : list name) : tactic expr := do
+  expected_prf_ty ← mk_app `can_lift.cond [old_tp, new_tp, inst, e],
+  expected_prf_ty ← s.dsimplify to_unfold expected_prf_ty,
+  if h_some : h.is_some then
+    decorate_error "lift tactic failed." $ i_to_expr ``((%%(option.get h_some) : %%expected_prf_ty))
+  else do
+    prf_nm ← get_unused_name,
+    prf ← assert prf_nm expected_prf_ty,
+    swap,
+    return prf
+meta def lift (p : pexpr) (t : pexpr) (h : option pexpr) (n : list name) : tactic unit :=
+do
+  propositional_goal <|>
+    fail "lift tactic failed. Tactic is only applicable when the target is a proposition.",
+  e ← i_to_expr p,
+  old_tp ← infer_type e,
+  new_tp ← i_to_expr ``(%%t : Sort*),
+  inst_type ← mk_app ``can_lift [old_tp, new_tp],
+  inst ← mk_instance inst_type <|>
+    pformat!"Failed to find a lift from {old_tp} to {new_tp}. Provide an instance of\n  {inst_type}"
+    >>= fail,
+  can_lift_instances ← can_lift_attr.get_cache >>= λ l, l.mmap resolve_name,
+  (s, to_unfold) ← mk_simp_set tt [] $ can_lift_instances.map simp_arg_type.expr,
+  prf_cond ← get_lift_prf h old_tp new_tp inst e s to_unfold,
+  let prf_nm := if prf_cond.is_local_constant then some prf_cond.local_pp_name else none,
+  prf_ex0 ← mk_mapp `can_lift.prf [old_tp, new_tp, inst, e],
+  let prf_ex := prf_ex0 prf_cond,
+  new_nm ← if n ≠ [] then return n.head
+    else if e.is_local_constant then return e.local_pp_name
+    else get_unused_name,
+  eq_nm ← if hn : 1 < n.length then return (n.nth_le 1 hn)
+    else if e.is_local_constant then return `rfl
+    else get_unused_name `h,
+  temp_nm ← get_unused_name,
+  temp_e ← note temp_nm none prf_ex,
+  dsimp_hyp temp_e s to_unfold {},
+  rcases none (pexpr.of_expr temp_e) $ rcases_patt.tuple ([new_nm, eq_nm].map rcases_patt.one),
+  when (¬ e.is_local_constant) (get_local eq_nm >>=
+    λ e, interactive.rw ⟨[⟨⟨0, 0⟩, tt, (pexpr.of_expr e)⟩], none⟩ interactive.loc.wildcard),
+  if h_prf_nm : prf_nm.is_some ∧ n.nth 2 ≠ prf_nm then
+    get_local (option.get h_prf_nm.1) >>= clear else skip
+setup_tactic_parser
+meta def using_texpr := (tk "using" *> texpr)?
+meta def to_texpr := (tk "to" *> texpr)
+namespace interactive
+meta def lift (p : parse texpr) (t : parse to_texpr) (h : parse using_texpr)
+  (n : parse with_ident_list) : tactic unit :=
+tactic.lift p t h n
+add_tactic_doc
+{ name       := "lift",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.lift],
+  tags       := ["coercions"] }
+end interactive
+end tactic

@@ -1,0 +1,18 @@
+import data.bool.basic
+import tactic.core
+open native tactic interactive lean.parser
+meta def tactic.clear' (clear_dependent : bool) (hyps : list expr) : tactic unit := do
+tgt ← target,
+meta def clear' (p : parse (many ident)) : tactic unit := do
+hyps ← p.mmap get_local,
+tactic.clear' false hyps
+meta def clear_dependent (p : parse (many ident)) : tactic unit := do
+hyps ← p.mmap get_local,
+tactic.clear' true hyps
+add_tactic_doc
+{ name       := "clear'",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.clear', `tactic.interactive.clear_dependent],
+  tags       := ["context management"],
+  inherit_description_from := `tactic.interactive.clear' }
+end tactic.interactive

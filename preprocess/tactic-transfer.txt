@@ -1,0 +1,29 @@
+prelude
+import init.meta.tactic
+import init.meta.match_tactic
+import init.meta.mk_dec_eq_instance
+import init.data.list.instances
+import logic.relator
+open tactic expr list monad
+namespace transfer
+private meta structure rel_data :=
+(in_type : expr)
+(out_type : expr)
+(relation : expr)
+meta instance has_to_tactic_format_rel_data : has_to_tactic_format rel_data :=
+⟨λr, do
+  R ← pp r.relation,
+  α ← pp r.in_type,
+  β ← pp r.out_type,
+  return format!"({R}: rel ({α}) ({β}))" ⟩
+private meta structure rule_data :=
+(pr      : expr)
+meta def compute_transfer : list rule_data → list expr → expr → tactic (expr × expr × list expr)
+| rds ctxt e := do
+    return (instantiate_locals ps ∘ inst_univ, ps, args, ms, rd))) <|>
+  (do trace e, fail "no matching rule"),
+  (bs, hs, mss) ← (zip rd.args args).mmap (λ⟨⟨_, d⟩, e⟩, do
+  exact ((const `iff.mpr [] : expr) tgt new_tgt pr new_pr),
+  ms ← ms.mmap (λm, (get_assignment m >> return []) <|> return [m]),
+  gs ← get_goals,
+  set_goals (ms.join ++ new_pr :: gs)

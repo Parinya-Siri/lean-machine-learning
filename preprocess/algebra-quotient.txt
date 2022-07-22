@@ -1,0 +1,4 @@
+import data.set_like.basic
+universes u v
+class has_quotient (A : out_param $ Type u) (B : Type v) :=
+(quotient' : B → Type (max u v))

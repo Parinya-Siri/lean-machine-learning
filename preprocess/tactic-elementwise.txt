@@ -1,0 +1,52 @@
+import category_theory.concrete_category.basic
+import tactic.fresh_names
+import tactic.reassoc_axiom
+import tactic.slice
+namespace tactic
+open interactive lean.parser category_theory
+meta def extract_category : expr → tactic expr
+| `(@eq (@quiver.hom ._ (@category_struct.to_quiver _
+     (@category.to_category_struct _ %%S)) _ _) _ _) := pure S
+| _ := failed
+meta def elementwise_lemma (n : name) (n' : name := n.append_suffix "_apply") : tactic unit :=
+do d ← get_decl n,
+   let c := @expr.const tt n d.univ_levels,
+   (t'',pr',l') ← prove_elementwise c,
+   let params := l'.to_list ++ d.univ_params,
+   add_decl $ declaration.thm n' params t'' (pure pr'),
+   copy_attribute `simp n n'
+@[user_attribute]
+meta def elementwise_attr : user_attribute unit (option name) :=
+{ name := `elementwise,
+  descr := "create a companion lemma for a morphism equation applied to an element",
+  parser := optional ident,
+  after_set := some (λ n _ _,
+    do some n' ← elementwise_attr.get_param n | elementwise_lemma n (n.append_suffix "_apply"),
+       elementwise_lemma n $ n.get_prefix ++ n' ) }
+add_tactic_doc
+{ name                     := "elementwise",
+  category                 := doc_category.attr,
+  decl_names               := [`tactic.elementwise_attr],
+  tags                     := ["category theory"] }
+namespace interactive
+setup_tactic_parser
+meta def elementwise (del : parse (tk "!")?) (ns : parse ident*) : tactic unit :=
+do ns.mmap' (λ n,
+   do h ← get_local n,
+      (t,pr,u) ← prove_elementwise h,
+      assertv n t pr,
+      when del.is_some (tactic.clear h) )
+end interactive
+meta def derive_elementwise_proof : tactic unit :=
+do `(calculated_Prop %%v %%h) ← target,
+   (t,pr,n) ← prove_elementwise h,
+   unify v t,
+   exact pr
+end tactic
+theorem category_theory.elementwise_of {α} (hh : α) {β}
+  (x : tactic.calculated_Prop β hh . tactic.derive_elementwise_proof) : β := x
+add_tactic_doc
+{ name                     := "category_theory.elementwise_of",
+  category                 := doc_category.tactic,
+  decl_names               := [`category_theory.elementwise_of],
+  tags                     := ["category theory"] }

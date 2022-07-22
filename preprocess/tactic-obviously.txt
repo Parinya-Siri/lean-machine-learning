@@ -1,0 +1,9 @@
+import tactic.tidy
+import tactic.replacer
+def_replacer obviously
+@[obviously] meta def obviously' :=
+tactic.sorry_if_contains_sorry <|>
+tactic.tidy <|>
+tactic.fail (
+"`obviously` failed to solve a subgoal.\n" ++
+"You may need to explicitly provide a proof of the corresponding structure field.")

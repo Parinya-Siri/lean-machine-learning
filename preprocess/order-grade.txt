@@ -1,0 +1,62 @@
+import data.nat.interval
+import data.int.succ_pred
+import order.atoms
+set_option old_structure_cmd true
+open finset nat order_dual
+variables {𝕆 ℙ α β : Type*}
+class grade_order (𝕆 α : Type*) [preorder 𝕆] [preorder α] :=
+(grade : α → 𝕆)
+(grade_strict_mono : strict_mono grade)
+(covby_grade ⦃a b : α⦄ : a ⋖ b → grade a ⋖ grade b)
+class grade_min_order (𝕆 α : Type*) [preorder 𝕆] [preorder α] extends grade_order 𝕆 α :=
+(is_min_grade ⦃a : α⦄ : is_min a → is_min (grade a))
+class grade_max_order (𝕆 α : Type*) [preorder 𝕆] [preorder α] extends grade_order 𝕆 α :=
+(is_max_grade ⦃a : α⦄ : is_max a → is_max (grade a))
+class grade_bounded_order (𝕆 α : Type*) [preorder 𝕆] [preorder α]
+  extends grade_min_order 𝕆 α, grade_max_order 𝕆 α
+def grade : α → 𝕆 := grade_order.grade
+protected lemma covby.grade (h : a ⋖ b) : grade 𝕆 a ⋖ grade 𝕆 b := grade_order.covby_grade h
+variables {𝕆}
+lemma grade_strict_mono : strict_mono (grade 𝕆 : α → 𝕆) := grade_order.grade_strict_mono
+lemma covby_iff_lt_covby_grade : a ⋖ b ↔ a < b ∧ grade 𝕆 a ⋖ grade 𝕆 b :=
+⟨λ h, ⟨h.1, h.grade _⟩, and.imp_right $ λ h c ha hb,
+  h.2 (grade_strict_mono ha) $ grade_strict_mono hb⟩
+end grade_order
+section grade_min_order
+variables (𝕆) [grade_min_order 𝕆 α] {a : α}
+protected lemma is_min.grade (h : is_min a) : is_min (grade 𝕆 a) := grade_min_order.is_min_grade h
+variables {𝕆}
+@[simp] lemma is_min_grade_iff : is_min (grade 𝕆 a) ↔ is_min a :=
+⟨grade_strict_mono.is_min_of_apply, is_min.grade _⟩
+end grade_min_order
+section grade_max_order
+variables (𝕆) [grade_max_order 𝕆 α] {a : α}
+protected lemma is_max.grade (h : is_max a) : is_max (grade 𝕆 a) := grade_max_order.is_max_grade h
+variables {𝕆}
+@[simp] lemma is_max_grade_iff : is_max (grade 𝕆 a) ↔ is_max a :=
+⟨grade_strict_mono.is_max_of_apply, is_max.grade _⟩
+end grade_max_order
+variables [preorder 𝕆] [preorder ℙ] [preorder α] [preorder β]
+instance preorder.to_grade_bounded_order : grade_bounded_order α α :=
+{ grade := id,
+  is_min_grade := λ _, id,
+  is_max_grade := λ _, id,
+  grade_strict_mono := strict_mono_id,
+  covby_grade := λ a b, id }
+@[simp] lemma grade_self (a : α) : grade α a = a := rfl
+instance [grade_order 𝕆 α] : grade_order 𝕆ᵒᵈ αᵒᵈ :=
+{ grade := to_dual ∘ grade 𝕆 ∘ of_dual,
+  grade_strict_mono := grade_strict_mono.dual,
+  covby_grade := λ a b h, (h.of_dual.grade _).to_dual }
+instance [grade_max_order 𝕆 α] : grade_min_order 𝕆ᵒᵈ αᵒᵈ :=
+{ is_min_grade := λ _, is_max.grade _,
+  ..order_dual.grade_order }
+instance [grade_min_order 𝕆 α] : grade_max_order 𝕆ᵒᵈ αᵒᵈ :=
+{ is_max_grade := λ _, is_min.grade _,
+  ..order_dual.grade_order }
+instance [grade_bounded_order 𝕆 α] : grade_bounded_order 𝕆ᵒᵈ αᵒᵈ :=
+{ ..order_dual.grade_min_order, ..order_dual.grade_max_order }
+@[simp] lemma grade_to_dual [grade_order 𝕆 α] (a : α) :
+  grade 𝕆ᵒᵈ (to_dual a) = to_dual (grade 𝕆 a) := rfl
+@[simp] lemma grade_of_dual [grade_order 𝕆 α] (a : αᵒᵈ) :
+  grade 𝕆 (of_dual a) = of_dual (grade 𝕆ᵒᵈ a) := rfl

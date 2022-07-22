@@ -1,0 +1,54 @@
+import tactic.ring
+import tactic.doc_commands
+meta def aux_group₁ (locat : loc) : tactic unit :=
+  simp_core {} skip tt [
+  expr ``(commutator_element_def),
+  expr ``(mul_one),
+  expr ``(one_mul),
+  expr ``(one_pow),
+  expr ``(one_zpow),
+  expr ``(sub_self),
+  expr ``(add_neg_self),
+  expr ``(neg_add_self),
+  expr ``(neg_neg),
+  expr ``(tsub_self),
+  expr ``(int.coe_nat_add),
+  expr ``(int.coe_nat_mul),
+  expr ``(int.coe_nat_zero),
+  expr ``(int.coe_nat_one),
+  expr ``(int.coe_nat_bit0),
+  expr ``(int.coe_nat_bit1),
+  expr ``(int.mul_neg_eq_neg_mul_symm),
+  expr ``(int.neg_mul_eq_neg_mul_symm),
+  symm_expr ``(zpow_coe_nat),
+  symm_expr ``(zpow_neg_one),
+  symm_expr ``(zpow_mul),
+  symm_expr ``(zpow_add_one),
+  symm_expr ``(zpow_one_add),
+  symm_expr ``(zpow_add),
+  expr ``(mul_zpow_neg_one),
+  expr ``(zpow_zero),
+  expr ``(mul_zpow),
+  symm_expr ``(mul_assoc),
+  expr ``(zpow_trick),
+  expr ``(zpow_trick_one),
+  expr ``(zpow_trick_one'),
+  expr ``(zpow_trick_sub),
+  expr ``(tactic.ring.horner)]
+  [] locat >> skip
+meta def aux_group₂ (locat : loc) : tactic unit :=
+ring_nf none tactic.ring.normalize_mode.raw locat
+end tactic
+namespace tactic.interactive
+setup_tactic_parser
+open tactic
+meta def group (locat : parse location) : tactic unit :=
+do when locat.include_goal `[rw ← mul_inv_eq_one],
+   try (aux_group₁ locat),
+   repeat (aux_group₂ locat ; aux_group₁ locat)
+end tactic.interactive
+add_tactic_doc
+{ name := "group",
+  category := doc_category.tactic,
+  decl_names := [`tactic.interactive.group],
+  tags := ["decision procedure", "simplification"] }

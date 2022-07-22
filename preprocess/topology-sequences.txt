@@ -1,0 +1,121 @@
+import topology.subset_properties
+import topology.metric_space.basic
+open set function filter
+open_locale topological_space
+variables {X Y : Type*}
+local notation x ` ⟶ ` a := tendsto x at_top (𝓝 a)
+section topological_space
+variables [topological_space X] [topological_space Y]
+def seq_closure (s : set X) : set X :=
+{a | ∃ x : ℕ → X, (∀ n : ℕ, x n ∈ s) ∧ (x ⟶ a)}
+lemma subset_seq_closure (s : set X) : s ⊆ seq_closure s :=
+λ a ha, ⟨const ℕ a, λ n, ha, tendsto_const_nhds⟩
+def is_seq_closed (s : set X) : Prop := s = seq_closure s
+lemma is_seq_closed_of_def {s : set X}
+  (h : ∀ (x : ℕ → X) (a : X), (∀ n : ℕ, x n ∈ s) → (x ⟶ a) → a ∈ s) : is_seq_closed s :=
+show s = seq_closure s, from subset.antisymm
+  (subset_seq_closure s)
+  (show ∀ a, a ∈ seq_closure s → a ∈ s, from
+    (assume a ⟨x, _, _⟩, show a ∈ s, from h x a ‹∀ n : ℕ, ((x n) ∈ s)› ‹(x ⟶ a)›))
+lemma seq_closure_subset_closure (s : set X) : seq_closure s ⊆ closure s :=
+assume a ⟨x, xM, xa⟩,
+mem_closure_of_tendsto xa (eventually_of_forall xM)
+lemma is_closed.is_seq_closed {s : set X} (hs : is_closed s) : is_seq_closed s :=
+suffices seq_closure s ⊆ s, from (subset_seq_closure s).antisymm this,
+calc seq_closure s ⊆ closure s : seq_closure_subset_closure s
+               ... = s         : hs.closure_eq
+lemma is_seq_closed.mem_of_tendsto {s : set X} (hs : is_seq_closed s) {x : ℕ → X}
+  (hmem : ∀ n, x n ∈ s) {a : X} (ha : (x ⟶ a)) : a ∈ s :=
+have a ∈ seq_closure s, from
+  show ∃ x : ℕ → X, (∀ n : ℕ, x n ∈ s) ∧ (x ⟶ a), from ⟨x, ‹∀ n, x n ∈ s›, ‹(x ⟶ a)›⟩,
+eq.subst (eq.symm ‹is_seq_closed s›) ‹a ∈ seq_closure s›
+class sequential_space (X : Type*) [topological_space X] : Prop :=
+(seq_closure_eq_closure : ∀ s : set X, seq_closure s = closure s)
+lemma is_seq_closed_iff_is_closed [sequential_space X] {s : set X} :
+  is_seq_closed s ↔ is_closed s :=
+iff.intro
+  (assume _, closure_eq_iff_is_closed.mp (eq.symm
+    (calc s = seq_closure s : by assumption
+        ... = closure s     : sequential_space.seq_closure_eq_closure s)))
+  is_closed.is_seq_closed
+alias is_seq_closed_iff_is_closed ↔ is_seq_closed.is_closed _
+lemma mem_closure_iff_seq_limit [sequential_space X] {s : set X} {a : X} :
+  a ∈ closure s ↔ ∃ x : ℕ → X, (∀ n : ℕ, x n ∈ s) ∧ (x ⟶ a) :=
+by { rw ← sequential_space.seq_closure_eq_closure, exact iff.rfl }
+def seq_continuous (f : X → Y) : Prop :=
+∀ (x : ℕ → X), ∀ {a : X}, (x ⟶ a) → (f ∘ x ⟶ f a)
+protected lemma continuous.seq_continuous {f : X → Y} (hf : continuous f) : seq_continuous f :=
+assume x a (_ : x ⟶ a),
+have tendsto f (𝓝 a) (𝓝 (f a)), from continuous.tendsto ‹continuous f› a,
+show (f ∘ x) ⟶ (f a), from tendsto.comp this ‹(x ⟶ a)›
+lemma continuous_iff_seq_continuous {f : X → Y} [sequential_space X] :
+  continuous f ↔ seq_continuous f :=
+iff.intro
+  continuous.seq_continuous
+  (assume : seq_continuous f, show continuous f, from
+    suffices h : ∀ {s : set Y}, is_closed s → is_seq_closed (f ⁻¹' s), from
+      continuous_iff_is_closed.mpr (assume s _, is_seq_closed_iff_is_closed.mp $ h ‹is_closed s›),
+    assume s (_ : is_closed s),
+      is_seq_closed_of_def $
+        assume (x : ℕ → X) a (_ : ∀ n, f (x n) ∈ s) (_ : x ⟶ a),
+        have (f ∘ x) ⟶ (f a), from ‹seq_continuous f› x ‹(x ⟶ a)›,
+        show f a ∈ s,
+          from ‹is_closed s›.is_seq_closed.mem_of_tendsto ‹∀ n, f (x n) ∈ s› ‹(f∘x ⟶ f a)›)
+alias continuous_iff_seq_continuous ↔ _ seq_continuous.continuous
+end topological_space
+namespace topological_space
+namespace first_countable_topology
+variables [topological_space X] [first_countable_topology X]
+def is_seq_compact (s : set X) :=
+∀ ⦃x : ℕ → X⦄, (∀ n, x n ∈ s) → ∃ (a ∈ s) (φ : ℕ → ℕ), strict_mono φ ∧ (x ∘ φ ⟶ a)
+class seq_compact_space (X : Type*) [topological_space X] : Prop :=
+(seq_compact_univ : is_seq_compact (univ : set X))
+lemma is_seq_compact.subseq_of_frequently_in {s : set X} (hs : is_seq_compact s) {x : ℕ → X}
+  (hx : ∃ᶠ n in at_top, x n ∈ s) :
+  ∃ (a ∈ s) (φ : ℕ → ℕ), strict_mono φ ∧ (x ∘ φ ⟶ a) :=
+let ⟨ψ, hψ, huψ⟩ := extraction_of_frequently_at_top hx, ⟨a, a_in, φ, hφ, h⟩ := hs huψ in
+⟨a, a_in, ψ ∘ φ, hψ.comp hφ, h⟩
+lemma seq_compact_space.tendsto_subseq [seq_compact_space X] (x : ℕ → X) :
+  ∃ a (φ : ℕ → ℕ), strict_mono φ ∧ (x ∘ φ ⟶ a) :=
+let ⟨a, _, φ, mono, h⟩ := seq_compact_space.seq_compact_univ (λ n, mem_univ (x n)) in
+⟨a, φ, mono, h⟩
+section first_countable_topology
+variables [first_countable_topology X]
+open topological_space.first_countable_topology
+lemma is_compact.is_seq_compact {s : set X} (hs : is_compact s) : is_seq_compact s :=
+λ x x_in,
+let ⟨a, a_in, ha⟩ := @hs (map x at_top) _
+  (le_principal_iff.mpr (univ_mem' x_in : _)) in ⟨a, a_in, tendsto_subseq ha⟩
+lemma is_compact.tendsto_subseq' {s : set X} {x : ℕ → X} (hs : is_compact s)
+  (hx : ∃ᶠ n in at_top, x n ∈ s) :
+  ∃ (a ∈ s) (φ : ℕ → ℕ), strict_mono φ ∧ (x ∘ φ ⟶ a) :=
+hs.is_seq_compact.subseq_of_frequently_in hx
+lemma is_compact.tendsto_subseq {s : set X} {x : ℕ → X} (hs : is_compact s) (hx : ∀ n, x n ∈ s) :
+  ∃ (a ∈ s) (φ : ℕ → ℕ), strict_mono φ ∧ (x ∘ φ ⟶ a) :=
+hs.is_seq_compact hx
+protected lemma uniform_space.compact_iff_seq_compact [is_countably_generated $ 𝓤 X] :
+ is_compact s ↔ is_seq_compact s :=
+⟨λ H, H.is_seq_compact, λ H, H.is_compact⟩
+lemma uniform_space.compact_space_iff_seq_compact_space [is_countably_generated $ 𝓤 X] :
+  compact_space X ↔ seq_compact_space X :=
+have key : is_compact (univ : set X) ↔ is_seq_compact univ := uniform_space.compact_iff_seq_compact,
+⟨λ ⟨h⟩, ⟨key.mp h⟩, λ ⟨h⟩, ⟨key.mpr h⟩⟩
+end uniform_space_seq_compact
+section metric_seq_compact
+variables [pseudo_metric_space X]
+open metric
+lemma seq_compact.lebesgue_number_lemma_of_metric {ι : Sort*} {c : ι → set X}
+  {s : set X} (hs : is_seq_compact s) (hc₁ : ∀ i, is_open (c i)) (hc₂ : s ⊆ ⋃ i, c i) :
+  ∃ δ > 0, ∀ a ∈ s, ∃ i, ball a δ ⊆ c i :=
+lebesgue_number_lemma_of_metric hs.is_compact hc₁ hc₂
+variables [proper_space X] {s : set X}
+lemma tendsto_subseq_of_frequently_bounded (hs : bounded s)
+  {x : ℕ → X} (hx : ∃ᶠ n in at_top, x n ∈ s) :
+  ∃ a ∈ closure s, ∃ φ : ℕ → ℕ, strict_mono φ ∧ (x ∘ φ ⟶ a) :=
+have hcs : is_seq_compact (closure s), from hs.is_compact_closure.is_seq_compact,
+have hu' : ∃ᶠ n in at_top, x n ∈ closure s, from hx.mono (λ n hn, subset_closure hn),
+hcs.subseq_of_frequently_in hu'
+lemma tendsto_subseq_of_bounded (hs : bounded s) {x : ℕ → X} (hx : ∀ n, x n ∈ s) :
+  ∃ a ∈ closure s, ∃ φ : ℕ → ℕ, strict_mono φ ∧ (x ∘ φ ⟶ a) :=
+tendsto_subseq_of_frequently_bounded hs $ frequently_of_forall hx
+end metric_seq_compact

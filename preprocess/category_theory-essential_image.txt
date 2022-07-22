@@ -1,0 +1,51 @@
+import category_theory.natural_isomorphism
+import category_theory.full_subcategory
+import data.set.basic
+universes v₁ v₂ u₁ u₂
+noncomputable theory
+namespace category_theory
+variables {C : Type u₁} {D : Type u₂} [category.{v₁} C] [category.{v₂} D] {F : C ⥤ D}
+namespace functor
+def ess_image (F : C ⥤ D) : set D := λ Y, ∃ (X : C), nonempty (F.obj X ≅ Y)
+def ess_image.witness {Y : D} (h : Y ∈ F.ess_image) : C := h.some
+def ess_image.get_iso {Y : D} (h : Y ∈ F.ess_image) : F.obj h.witness ≅ Y :=
+classical.choice h.some_spec
+lemma ess_image.of_iso {Y Y' : D} (h : Y ≅ Y') (hY : Y ∈ ess_image F) :
+  Y' ∈ ess_image F :=
+hY.imp (λ B, nonempty.map (≪≫ h))
+lemma ess_image.of_nat_iso {F' : C ⥤ D} (h : F ≅ F') {Y : D} (hY : Y ∈ ess_image F) :
+  Y ∈ ess_image F' :=
+hY.imp (λ X, nonempty.map (λ t, h.symm.app X ≪≫ t))
+lemma ess_image_eq_of_nat_iso {F' : C ⥤ D} (h : F ≅ F') :
+  ess_image F = ess_image F' :=
+set.ext $ λ A, ⟨ess_image.of_nat_iso h, ess_image.of_nat_iso h.symm⟩
+lemma obj_mem_ess_image (F : D ⥤ C) (Y : D) : F.obj Y ∈ ess_image F := ⟨Y, ⟨iso.refl _⟩⟩
+instance : category F.ess_image := category_theory.full_subcategory _
+@[derive [full, faithful], simps]
+def ess_image_inclusion (F : C ⥤ D) : F.ess_image ⥤ D :=
+full_subcategory_inclusion _
+@[simps]
+def to_ess_image (F : C ⥤ D) : C ⥤ F.ess_image :=
+{ obj := λ X, ⟨_, obj_mem_ess_image _ X⟩,
+  map := λ X Y f, (ess_image_inclusion F).preimage (F.map f) }
+@[simps]
+def to_ess_image_comp_essential_image_inclusion (F : C ⥤ D) :
+  F.to_ess_image ⋙ F.ess_image_inclusion ≅ F :=
+nat_iso.of_components (λ X, iso.refl _) (by tidy)
+end functor
+class ess_surj (F : C ⥤ D) : Prop :=
+(mem_ess_image [] (Y : D) : Y ∈ F.ess_image)
+instance : ess_surj F.to_ess_image :=
+{ mem_ess_image := λ ⟨Y, hY⟩, ⟨_, ⟨⟨_, _, hY.get_iso.hom_inv_id, hY.get_iso.inv_hom_id⟩⟩⟩ }
+variables (F) [ess_surj F]
+def functor.obj_preimage (Y : D) : C := (ess_surj.mem_ess_image F Y).witness
+def functor.obj_obj_preimage_iso (Y : D) : F.obj (F.obj_preimage Y) ≅ Y :=
+(ess_surj.mem_ess_image F Y).get_iso
+instance faithful.to_ess_image (F : C ⥤ D) [faithful F] : faithful F.to_ess_image :=
+faithful.of_comp_iso F.to_ess_image_comp_essential_image_inclusion
+instance full.to_ess_image (F : C ⥤ D) [full F] : full F.to_ess_image :=
+begin
+  haveI := full.of_iso F.to_ess_image_comp_essential_image_inclusion.symm,
+  exactI full.of_comp_faithful F.to_ess_image F.ess_image_inclusion
+end
+end category_theory

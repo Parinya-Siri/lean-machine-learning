@@ -1,0 +1,29 @@
+import tactic.core
+namespace tactic
+meta def copy_attribute' (attr_name : name) (src : name) (tgt : name) (p : option bool := none) :
+tactic unit := do
+  get_decl tgt <|> fail!"unknown declaration {tgt}",
+meta def additive_test_aux (f : name → option name) (ignore : name_map $ list ℕ) :
+  bool → expr → bool
+| b (var n)                := tt
+| b (sort l)               := tt
+| b (const n ls)           := b || (f n).is_some
+| b (mvar n m t)           := tt
+| b (local_const n m bi t) := tt
+| b (app e f)              := additive_test_aux tt e &&
+meta def additive_test (f : name → option name) (replace_all : bool) (ignore : name_map $ list ℕ)
+  (e : expr) : bool :=
+if replace_all then tt else additive_test_aux f ignore ff e
+meta def transform_decl_with_prefix_fun_aux (f : name → option name)
+  (replace_all trace : bool) (relevant : name_map ℕ) (ignore reorder : name_map $ list ℕ)
+  (pre tgt_pre : name) : name → command :=
+λ src,
+do
+meta def transform_decl_with_prefix_fun (f : name → option name) (replace_all trace : bool)
+  (relevant : name_map ℕ) (ignore reorder : name_map $ list ℕ) (src tgt : name) (attrs : list name)
+  : command :=
+meta def transform_decl_with_prefix_dict (dict : name_map name) (replace_all trace : bool)
+  (relevant : name_map ℕ) (ignore reorder : name_map $ list ℕ) (src tgt : name) (attrs : list name)
+  : command :=
+transform_decl_with_prefix_fun dict.find replace_all trace relevant ignore reorder src tgt attrs
+end tactic

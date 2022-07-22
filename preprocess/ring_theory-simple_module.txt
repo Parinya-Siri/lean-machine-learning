@@ -1,0 +1,43 @@
+import linear_algebra.span
+import order.atoms
+variables (R : Type*) [ring R] (M : Type*) [add_comm_group M] [module R M]
+abbreviation is_simple_module := (is_simple_order (submodule R M))
+abbreviation is_semisimple_module := (is_complemented (submodule R M))
+theorem bijective_or_eq_zero [is_simple_module R M] [is_simple_module R N]
+  (f : M →ₗ[R] N) :
+  function.bijective f ∨ f = 0 :=
+begin
+  by_cases h : f = 0,
+  { right,
+    exact h },
+  exact or.intro_left _ ⟨injective_of_ne_zero h, surjective_of_ne_zero h⟩,
+end
+theorem bijective_of_ne_zero [is_simple_module R M] [is_simple_module R N]
+  {f : M →ₗ[R] N} (h : f ≠ 0):
+  function.bijective f :=
+f.bijective_or_eq_zero.resolve_right h
+noncomputable instance _root_.module.End.division_ring
+  [decidable_eq (module.End R M)] [is_simple_module R M] :
+  division_ring (module.End R M) :=
+{ inv := λ f, if h : f = 0 then 0 else (linear_map.inverse f
+    (equiv.of_bijective _ (bijective_of_ne_zero h)).inv_fun
+    (equiv.of_bijective _ (bijective_of_ne_zero h)).left_inv
+    (equiv.of_bijective _ (bijective_of_ne_zero h)).right_inv),
+  exists_pair_ne := ⟨0, 1, begin
+    haveI := is_simple_module.nontrivial R M,
+    have h := exists_pair_ne M,
+    contrapose! h,
+    intros x y,
+    simp_rw [ext_iff, one_apply, zero_apply] at h,
+    rw [← h x, h y],
+  end⟩,
+  mul_inv_cancel := begin
+    intros a a0,
+    change (a * (dite _ _ _)) = 1,
+    ext,
+    rw [dif_neg a0, mul_eq_comp, one_apply, comp_apply],
+    exact (equiv.of_bijective _ (bijective_of_ne_zero a0)).right_inv x,
+  end,
+  inv_zero := dif_pos rfl,
+.. (module.End.ring : ring (module.End R M))}
+end linear_map

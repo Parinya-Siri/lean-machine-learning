@@ -1,0 +1,1 @@
+lemma mathlib_dir_locator : true := trivial

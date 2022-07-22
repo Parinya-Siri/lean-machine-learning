@@ -1,0 +1,4 @@
+import tactic.abel
+namespace tactic
+namespace interactive
+meta def noncomm_ring :=

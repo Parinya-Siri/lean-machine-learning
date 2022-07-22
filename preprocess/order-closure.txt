@@ -1,0 +1,251 @@
+import data.set.lattice
+import data.set_like.basic
+import order.galois_connection
+import order.hom.basic
+import tactic.monotonicity
+universe u
+variables (α : Type*) {ι : Sort*} {κ : ι → Sort*}
+structure closure_operator [preorder α] extends α →o α :=
+(le_closure' : ∀ x, x ≤ to_fun x)
+(idempotent' : ∀ x, to_fun (to_fun x) = to_fun x)
+namespace closure_operator
+instance [preorder α] : has_coe_to_fun (closure_operator α) (λ _, α → α) := ⟨λ c, c.to_fun⟩
+def simps.apply [preorder α] (f : closure_operator α) : α → α := f
+initialize_simps_projections closure_operator (to_order_hom_to_fun → apply, -to_order_hom)
+section partial_order
+variable [partial_order α]
+@[simps]
+def id : closure_operator α :=
+{ to_order_hom := order_hom.id,
+  le_closure' := λ _, le_rfl,
+  idempotent' := λ _, rfl }
+instance : inhabited (closure_operator α) := ⟨id α⟩
+variables {α} (c : closure_operator α)
+@[ext] lemma ext :
+  ∀ (c₁ c₂ : closure_operator α), (c₁ : α → α) = (c₂ : α → α) → c₁ = c₂
+| ⟨⟨c₁, _⟩, _, _⟩ ⟨⟨c₂, _⟩, _, _⟩ h := by { congr, exact h }
+@[simps]
+def mk' (f : α → α) (hf₁ : monotone f) (hf₂ : ∀ x, x ≤ f x) (hf₃ : ∀ x, f (f x) ≤ f x) :
+  closure_operator α :=
+{ to_fun := f,
+  monotone' := hf₁,
+  le_closure' := hf₂,
+  idempotent' := λ x, (hf₃ x).antisymm (hf₁ (hf₂ x)) }
+@[simps]
+def mk₂ (f : α → α) (hf : ∀ x, x ≤ f x) (hmin : ∀ ⦃x y⦄, x ≤ f y → f x ≤ f y) :
+  closure_operator α :=
+{ to_fun := f,
+  monotone' := λ x y hxy, hmin (hxy.trans (hf y)),
+  le_closure' := hf,
+  idempotent' := λ x, (hmin le_rfl).antisymm (hf _) }
+@[simps]
+def mk₃ (f : α → α) (p : α → Prop) (hf : ∀ x, x ≤ f x) (hfp : ∀ x, p (f x))
+  (hmin : ∀ ⦃x y⦄, x ≤ y → p y → f x ≤ y) :
+  closure_operator α :=
+mk₂ f hf (λ x y hxy, hmin hxy (hfp y))
+lemma closure_mem_mk₃ {f : α → α} {p : α → Prop} {hf : ∀ x, x ≤ f x} {hfp : ∀ x, p (f x)}
+  {hmin : ∀ ⦃x y⦄, x ≤ y → p y → f x ≤ y} (x : α) :
+  p (mk₃ f p hf hfp hmin x) :=
+hfp x
+lemma closure_le_mk₃_iff {f : α → α} {p : α → Prop} {hf : ∀ x, x ≤ f x} {hfp : ∀ x, p (f x)}
+  {hmin : ∀ ⦃x y⦄, x ≤ y → p y → f x ≤ y} {x y : α} (hxy : x ≤ y) (hy : p y) :
+  mk₃ f p hf hfp hmin x ≤ y :=
+hmin hxy hy
+@[mono] lemma monotone : monotone c := c.monotone'
+lemma le_closure (x : α) : x ≤ c x := c.le_closure' x
+@[simp] lemma idempotent (x : α) : c (c x) = c x := c.idempotent' x
+lemma le_closure_iff (x y : α) : x ≤ c y ↔ c x ≤ c y :=
+⟨λ h, c.idempotent y ▸ c.monotone h, λ h, (c.le_closure x).trans h⟩
+def closed : set α := λ x, c x = x
+lemma mem_closed_iff (x : α) : x ∈ c.closed ↔ c x = x := iff.rfl
+lemma mem_closed_iff_closure_le (x : α) : x ∈ c.closed ↔ c x ≤ x :=
+⟨le_of_eq, λ h, h.antisymm (c.le_closure x)⟩
+lemma closure_eq_self_of_mem_closed {x : α} (h : x ∈ c.closed) : c x = x := h
+@[simp] lemma closure_is_closed (x : α) : c x ∈ c.closed := c.idempotent x
+lemma closed_eq_range_close : c.closed = set.range c :=
+set.ext $ λ x, ⟨λ h, ⟨x, h⟩, by { rintro ⟨y, rfl⟩, apply c.idempotent }⟩
+def to_closed (x : α) : c.closed := ⟨c x, c.closure_is_closed x⟩
+@[simp] lemma closure_le_closed_iff_le (x : α) {y : α} (hy : c.closed y) : c x ≤ y ↔ x ≤ y :=
+by rw [←c.closure_eq_self_of_mem_closed hy, ←le_closure_iff]
+lemma eq_mk₃_closed (c : closure_operator α) :
+  c = mk₃ c c.closed c.le_closure c.closure_is_closed
+  (λ x y hxy hy, (c.closure_le_closed_iff_le x hy).2 hxy) :=
+by { ext, refl }
+lemma mem_mk₃_closed {f : α → α} {p : α → Prop} {hf : ∀ x, x ≤ f x} {hfp : ∀ x, p (f x)}
+  {hmin : ∀ ⦃x y⦄, x ≤ y → p y → f x ≤ y} {x : α} (hx : p x) :
+  x ∈ (mk₃ f p hf hfp hmin).closed :=
+(hmin le_rfl hx).antisymm (hf _)
+end partial_order
+variable {α}
+section order_top
+variables [partial_order α] [order_top α] (c : closure_operator α)
+@[simp] lemma closure_top : c ⊤ = ⊤ :=
+le_top.antisymm (c.le_closure _)
+lemma top_mem_closed : ⊤ ∈ c.closed :=
+c.closure_top
+end order_top
+lemma closure_inf_le [semilattice_inf α] (c : closure_operator α) (x y : α) :
+  c (x ⊓ y) ≤ c x ⊓ c y :=
+c.monotone.map_inf_le _ _
+section semilattice_sup
+variables [semilattice_sup α] (c : closure_operator α)
+lemma closure_sup_closure_le (x y : α) :
+  c x ⊔ c y ≤ c (x ⊔ y) :=
+c.monotone.le_map_sup _ _
+lemma closure_sup_closure_left (x y : α) :
+  c (c x ⊔ y) = c (x ⊔ y) :=
+((c.le_closure_iff _ _).1 (sup_le (c.monotone le_sup_left) (le_sup_right.trans
+  (c.le_closure _)))).antisymm (c.monotone (sup_le_sup_right (c.le_closure _) _))
+lemma closure_sup_closure_right (x y : α) :
+  c (x ⊔ c y) = c (x ⊔ y) :=
+by rw [sup_comm, closure_sup_closure_left, sup_comm]
+lemma closure_sup_closure (x y : α) :
+  c (c x ⊔ c y) = c (x ⊔ y) :=
+by rw [closure_sup_closure_left, closure_sup_closure_right]
+end semilattice_sup
+section complete_lattice
+variables [complete_lattice α] (c : closure_operator α)
+@[simp] lemma closure_supr_closure (f : ι → α) : c (⨆ i, c (f i)) = c (⨆ i, f i) :=
+le_antisymm ((c.le_closure_iff _ _).1 $ supr_le $ λ i, c.monotone $ le_supr f i) $
+  c.monotone $ supr_mono $ λ i, c.le_closure _
+@[simp] lemma closure_supr₂_closure (f : Π i, κ i → α) : c (⨆ i j, c (f i j)) = c (⨆ i j, f i j) :=
+le_antisymm ((c.le_closure_iff _ _).1 $ supr₂_le $ λ i j, c.monotone $ le_supr₂ i j) $
+  c.monotone $ supr₂_mono $ λ i j, c.le_closure _
+end complete_lattice
+end closure_operator
+variables {α} {β : Type*}
+structure lower_adjoint [preorder α] [preorder β] (u : β → α) :=
+(to_fun : α → β)
+(gc' : galois_connection to_fun u)
+namespace lower_adjoint
+variable (α)
+@[simps]
+protected def id [preorder α] : lower_adjoint (id : α → α) :=
+{ to_fun := λ x, x,
+  gc' := galois_connection.id }
+variable {α}
+instance [preorder α] : inhabited (lower_adjoint (id : α → α)) := ⟨lower_adjoint.id α⟩
+section preorder
+variables [preorder α] [preorder β] {u : β → α} (l : lower_adjoint u)
+instance : has_coe_to_fun (lower_adjoint u) (λ _, α → β) := { coe := to_fun }
+def simps.apply : α → β := l
+lemma gc : galois_connection l u := l.gc'
+@[ext] lemma ext :
+  ∀ (l₁ l₂ : lower_adjoint u), (l₁ : α → β) = (l₂ : α → β) → l₁ = l₂
+| ⟨l₁, _⟩ ⟨l₂, _⟩ h := by { congr, exact h }
+@[mono] lemma monotone : monotone (u ∘ l) := l.gc.monotone_u.comp l.gc.monotone_l
+lemma le_closure (x : α) : x ≤ u (l x) := l.gc.le_u_l _
+end preorder
+section partial_order
+variables [partial_order α] [preorder β] {u : β → α} (l : lower_adjoint u)
+@[simps]
+def closure_operator :
+  closure_operator α :=
+{ to_fun := λ x, u (l x),
+  monotone' := l.monotone,
+  le_closure' := l.le_closure,
+  idempotent' := λ x, l.gc.u_l_u_eq_u (l x) }
+lemma idempotent (x : α) : u (l (u (l x))) = u (l x) :=
+l.closure_operator.idempotent _
+lemma le_closure_iff (x y : α) : x ≤ u (l y) ↔ u (l x) ≤ u (l y) :=
+l.closure_operator.le_closure_iff _ _
+end partial_order
+section preorder
+variables [preorder α] [preorder β] {u : β → α} (l : lower_adjoint u)
+def closed : set α := λ x, u (l x) = x
+lemma mem_closed_iff (x : α) : x ∈ l.closed ↔ u (l x) = x := iff.rfl
+lemma closure_eq_self_of_mem_closed {x : α} (h : x ∈ l.closed) : u (l x) = x := h
+end preorder
+section partial_order
+variables [partial_order α] [partial_order β] {u : β → α} (l : lower_adjoint u)
+lemma mem_closed_iff_closure_le (x : α) : x ∈ l.closed ↔ u (l x) ≤ x :=
+l.closure_operator.mem_closed_iff_closure_le _
+@[simp] lemma closure_is_closed (x : α) : u (l x) ∈ l.closed := l.idempotent x
+lemma closed_eq_range_close : l.closed = set.range (u ∘ l) :=
+l.closure_operator.closed_eq_range_close
+def to_closed (x : α) : l.closed := ⟨u (l x), l.closure_is_closed x⟩
+@[simp] lemma closure_le_closed_iff_le (x : α) {y : α} (hy : l.closed y) : u (l x) ≤ y ↔ x ≤ y :=
+l.closure_operator.closure_le_closed_iff_le x hy
+end partial_order
+lemma closure_top [partial_order α] [order_top α] [preorder β] {u : β → α} (l : lower_adjoint u) :
+  u (l ⊤) = ⊤ :=
+l.closure_operator.closure_top
+lemma closure_inf_le [semilattice_inf α] [preorder β] {u : β → α} (l : lower_adjoint u) (x y : α) :
+  u (l (x ⊓ y)) ≤ u (l x) ⊓ u (l y) :=
+l.closure_operator.closure_inf_le x y
+section semilattice_sup
+variables [semilattice_sup α] [preorder β] {u : β → α} (l : lower_adjoint u)
+lemma closure_sup_closure_le (x y : α) :
+  u (l x) ⊔ u (l y) ≤ u (l (x ⊔ y)) :=
+l.closure_operator.closure_sup_closure_le x y
+lemma closure_sup_closure_left (x y : α) :
+  u (l (u (l x) ⊔ y)) = u (l (x ⊔ y)) :=
+l.closure_operator.closure_sup_closure_left x y
+lemma closure_sup_closure_right (x y : α) :
+  u (l (x ⊔ u (l y))) = u (l (x ⊔ y)) :=
+l.closure_operator.closure_sup_closure_right x y
+lemma closure_sup_closure (x y : α) :
+  u (l (u (l x) ⊔ u (l y))) = u (l (x ⊔ y)) :=
+l.closure_operator.closure_sup_closure x y
+end semilattice_sup
+section complete_lattice
+variables [complete_lattice α] [preorder β] {u : β → α} (l : lower_adjoint u)
+lemma closure_supr_closure (f : ι → α) : u (l (⨆ i, u (l (f i)))) = u (l (⨆ i, f i)) :=
+l.closure_operator.closure_supr_closure _
+lemma closure_supr₂_closure (f : Π i, κ i → α) :
+  u (l $ ⨆ i j, u (l $ f i j)) = u (l $ ⨆ i j, f i j) :=
+l.closure_operator.closure_supr₂_closure _
+end complete_lattice
+section coe_to_set
+variables [set_like α β] (l : lower_adjoint (coe : α → set β))
+lemma subset_closure (s : set β) : s ⊆ l s :=
+l.le_closure s
+lemma not_mem_of_not_mem_closure {s : set β} {P : β} (hP : P ∉ l s) : P ∉ s :=
+λ h, hP (subset_closure _ s h)
+lemma le_iff_subset (s : set β) (S : α) : l s ≤ S ↔ s ⊆ S :=
+l.gc s S
+lemma mem_iff (s : set β) (x : β) : x ∈ l s ↔ ∀ S : α, s ⊆ S → x ∈ S :=
+by { simp_rw [←set_like.mem_coe, ←set.singleton_subset_iff, ←l.le_iff_subset],
+  exact ⟨λ h S, h.trans, λ h, h _ le_rfl⟩ }
+lemma eq_of_le {s : set β} {S : α} (h₁ : s ⊆ S) (h₂ : S ≤ l s) : l s = S :=
+((l.le_iff_subset _ _).2 h₁).antisymm h₂
+lemma closure_union_closure_subset (x y : α) :
+  (l x : set β) ∪ (l y) ⊆ l (x ∪ y) :=
+l.closure_sup_closure_le x y
+@[simp] lemma closure_union_closure_left (x y : α) :
+  (l ((l x) ∪ y) : set β) = l (x ∪ y) :=
+l.closure_sup_closure_left x y
+@[simp] lemma closure_union_closure_right (x y : α) :
+  l (x ∪ (l y)) = l (x ∪ y) :=
+set_like.coe_injective (l.closure_sup_closure_right x y)
+@[simp] lemma closure_union_closure (x y : α) :
+  l ((l x) ∪ (l y)) = l (x ∪ y) :=
+set_like.coe_injective (l.closure_operator.closure_sup_closure x y)
+@[simp] lemma closure_Union_closure (f : ι → α) : l (⋃ i, l (f i)) = l (⋃ i, f i) :=
+set_like.coe_injective $ l.closure_supr_closure _
+@[simp] lemma closure_Union₂_closure (f : Π i, κ i → α) : l (⋃ i j, l (f i j)) = l (⋃ i j, f i j) :=
+set_like.coe_injective $ l.closure_supr₂_closure _
+end coe_to_set
+end lower_adjoint
+variable {α}
+@[simps]
+def galois_connection.lower_adjoint [preorder α] [preorder β] {l : α → β} {u : β → α}
+  (gc : galois_connection l u) :
+  lower_adjoint u :=
+{ to_fun := l,
+  gc' := gc }
+@[simps]
+def galois_connection.closure_operator [partial_order α] [preorder β] {l : α → β} {u : β → α}
+  (gc : galois_connection l u) :
+  closure_operator α :=
+gc.lower_adjoint.closure_operator
+def closure_operator.gi [partial_order α] (c : closure_operator α) :
+  galois_insertion c.to_closed coe :=
+{ choice := λ x hx, ⟨x, hx.antisymm (c.le_closure x)⟩,
+  gc := λ x y, (c.closure_le_closed_iff_le _ y.2),
+  le_l_u := λ x, c.le_closure _,
+  choice_eq := λ x hx, le_antisymm (c.le_closure x) hx }
+@[simp]
+lemma closure_operator_gi_self [partial_order α] (c : closure_operator α) :
+  c.gi.gc.closure_operator = c :=
+by { ext x, refl }

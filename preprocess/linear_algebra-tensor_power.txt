@@ -1,0 +1,24 @@
+import linear_algebra.pi_tensor_product
+import logic.equiv.fin
+import algebra.direct_sum.algebra
+open_locale tensor_product
+@[reducible] protected def tensor_power (R : Type*) (n : ℕ) (M : Type*)
+  [comm_semiring R] [add_comm_monoid M] [module R M] : Type* :=
+⨂[R] i : fin n, M
+variables {R : Type*} {M : Type*} [comm_semiring R] [add_comm_monoid M] [module R M]
+localized "notation `⨂[`:100 R `]^`:80 n:max := tensor_power R n"
+  in tensor_product
+namespace tensor_power
+open_locale tensor_product direct_sum
+open pi_tensor_product
+instance ghas_one : graded_monoid.ghas_one (λ i, ⨂[R]^i M) :=
+{ one := tprod R fin.elim0 }
+local notation `ₜ1` := @graded_monoid.ghas_one.one ℕ (λ i, ⨂[R]^i M) _ _
+lemma ghas_one_def : ₜ1 = tprod R fin.elim0 := rfl
+def mul_equiv {n m : ℕ} : (⨂[R]^n M) ⊗[R] (⨂[R]^m M) ≃ₗ[R] ⨂[R]^(n + m) M :=
+(tmul_equiv R M).trans (reindex R M fin_sum_fin_equiv)
+instance ghas_mul : graded_monoid.ghas_mul (λ i, ⨂[R]^i M) :=
+{ mul := λ i j a b, mul_equiv (a ⊗ₜ b) }
+local infix `ₜ*`:70 := @graded_monoid.ghas_mul.mul ℕ (λ i, ⨂[R]^i M) _ _ _ _
+lemma ghas_mul_def {i j} (a : ⨂[R]^i M) (b : ⨂[R]^j M) : a ₜ* b = mul_equiv (a ⊗ₜ b) := rfl
+end tensor_power

@@ -1,0 +1,100 @@
+import tactic.core
+universes u v w
+namespace tactic
+open expr
+namespace generalizes
+meta def step1 (md : transparency) (unify : bool)
+  (e : expr) (to_generalize : list (name × expr)) : tactic (expr × list expr) := do
+  let go : name × expr → expr × list expr → tactic (expr × list expr) :=
+        λ ⟨n, j⟩ ⟨e, ks⟩, do
+        { J ← infer_type j,
+          k ← mk_local' n binder_info.default J,
+          e ← kreplace e j k md unify,
+          ks ← ks.mmap $ λ k', kreplace k' j k md unify,
+          pure (e, k :: ks) },
+  to_generalize.mfoldr go (e, [])
+meta def step2 (md : transparency)
+  (to_generalize : list (name × expr × expr))
+  : tactic (list (expr × expr)) :=
+to_generalize.mmap $ λ ⟨n, j, k⟩, do
+  J ← infer_type j,
+  K ← infer_type k,
+  sort u ← infer_type K |
+    fail! "generalizes'/step2: expected the type of {K} to be a sort",
+  homogeneous ← succeeds $ is_def_eq J K md,
+  let ⟨eq_type, eq_proof⟩ :=
+    if homogeneous
+      then ((const `eq  [u]) K k j  , (const `eq.refl  [u]) J j)
+      else ((const `heq [u]) K k J j, (const `heq.refl [u]) J j),
+  eq ← mk_local' n binder_info.default eq_type,
+  pure (eq, eq_proof)
+meta def step3 (e : expr) (js ks eqs eq_proofs : list expr)
+  : tactic unit :=
+focus1 $ do
+  let new_target_type := (e.pis eqs).pis ks,
+  type_check new_target_type <|> fail!
+    ("generalizes': unable to generalize the target because the generalized target type does not" ++
+    " type check:\n{new_target_type}"),
+  n ← mk_fresh_name,
+  new_target ← assert n new_target_type,
+  swap,
+  let target_proof := new_target.mk_app $ js ++ eq_proofs,
+  exact target_proof
+end generalizes
+open generalizes
+meta def generalizes' (args : list (name × option name × expr))
+  (md := semireducible) (unify := tt) : tactic unit := do
+  tgt ← target,
+  let stage1_args := args.map $ λ ⟨n, _, j⟩, (n, j),
+  ⟨e, ks⟩ ← step1 md unify tgt stage1_args,
+  let stage2_args : list (option (name × expr × expr)) :=
+    args.map₂ (λ ⟨_, eq_name, j⟩ k, eq_name.map $ λ eq_name, (eq_name, j, k)) ks,
+  let stage2_args := stage2_args.reduce_option,
+  eqs_and_proofs ← step2 md stage2_args,
+  let eqs := eqs_and_proofs.map prod.fst,
+  let eq_proofs := eqs_and_proofs.map prod.snd,
+  let js := args.map (prod.snd ∘ prod.snd),
+  step3 e js ks eqs eq_proofs
+meta def generalizes_intro (args : list (name × option name × expr))
+  (md := semireducible) (unify := tt) : tactic (list expr × list expr) := do
+  generalizes' args md unify,
+  ks ← intron' args.length,
+  eqs ← intron' $ args.countp $ λ x, x.snd.fst.is_some,
+  pure (ks, eqs)
+namespace interactive
+setup_tactic_parser
+private meta def generalizes_arg_parser_eq : pexpr → lean.parser (pexpr × name)
+| (app (app (macro _ [const `eq _ ])  e) (local_const x _ _ _)) := pure (e, x)
+| (app (app (macro _ [const `heq _ ]) e) (local_const x _ _ _)) := pure (e, x)
+| _ := failure
+private meta def generalizes_arg_parser : lean.parser (name × option name × pexpr) :=
+with_desc "(id :)? expr = id" $ do
+  lhs ← lean.parser.pexpr 0,
+  (tk ":" >> match lhs with
+    | local_const hyp_name _ _ _ := do
+      (arg, arg_name) ← lean.parser.pexpr 0 >>= generalizes_arg_parser_eq,
+      pure (arg_name, some hyp_name, arg)
+    | _ := failure
+    end) <|>
+  (do
+    (arg, arg_name) ← generalizes_arg_parser_eq lhs,
+    pure (arg_name, none, arg))
+private meta def generalizes_args_parser
+  : lean.parser (list (name × option name × pexpr)) :=
+with_desc "[(id :)? expr = id, ...]" $
+  tk "[" *> sep_by (tk ",") generalizes_arg_parser <* tk "]"
+meta def generalizes (args : parse generalizes_args_parser) : tactic unit :=
+propagate_tags $ do
+  args ← args.mmap $ λ ⟨arg_name, hyp_name, arg⟩, do
+  { arg ← to_expr arg,
+    pure (arg_name, hyp_name, arg) },
+  generalizes_intro args,
+  pure ()
+add_tactic_doc
+{ name       := "generalizes",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.generalizes],
+  tags       := ["context management"],
+  inherit_description_from := `tactic.interactive.generalizes }
+end interactive
+end tactic

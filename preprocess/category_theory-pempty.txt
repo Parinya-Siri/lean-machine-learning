@@ -1,0 +1,16 @@
+import category_theory.discrete_category
+def empty_equivalence : discrete.{w} pempty ≌ discrete.{v} pempty :=
+equivalence.mk
+{ obj := pempty.elim ∘ discrete.as, map := λ x, x.as.elim }
+{ obj := pempty.elim ∘ discrete.as, map := λ x, x.as.elim }
+(by tidy) (by tidy)
+def empty : discrete.{w} pempty ⥤ C := discrete.functor pempty.elim
+variable {C}
+def empty_ext (F G : discrete.{w} pempty ⥤ C) : F ≅ G :=
+discrete.nat_iso (λ x, x.as.elim)
+def unique_from_empty (F : discrete.{w} pempty ⥤ C) : F ≅ empty C :=
+empty_ext _ _
+lemma empty_ext' (F G : discrete.{w} pempty ⥤ C) : F = G :=
+functor.ext (λ x, x.as.elim) (λ x _ _, x.as.elim)
+end functor
+end category_theory

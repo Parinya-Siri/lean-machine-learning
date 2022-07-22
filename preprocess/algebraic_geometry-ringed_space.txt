@@ -1,0 +1,89 @@
+import algebra.category.Ring.filtered_colimits
+import algebraic_geometry.sheafed_space
+import topology.sheaves.stalks
+import algebra.category.Ring.colimits
+import algebra.category.Ring.limits
+universe v
+open category_theory
+open topological_space
+open opposite
+open Top
+open Top.presheaf
+namespace algebraic_geometry
+abbreviation RingedSpace : Type* := SheafedSpace CommRing
+namespace RingedSpace
+open SheafedSpace
+variables (X : RingedSpace.{v})
+lemma is_unit_res_of_is_unit_germ (U : opens X) (f : X.presheaf.obj (op U)) (x : U)
+  (h : is_unit (X.presheaf.germ x f)) :
+  ∃ (V : opens X) (i : V ⟶ U) (hxV : x.1 ∈ V), is_unit (X.presheaf.map i.op f) :=
+begin
+  obtain ⟨g', heq⟩ := h.exists_right_inv,
+  obtain ⟨V, hxV, g, rfl⟩ := X.presheaf.germ_exist x.1 g',
+  let W := U ⊓ V,
+  have hxW : x.1 ∈ W := ⟨x.2, hxV⟩,
+  erw [← X.presheaf.germ_res_apply (opens.inf_le_left U V) ⟨x.1, hxW⟩ f,
+    ← X.presheaf.germ_res_apply (opens.inf_le_right U V) ⟨x.1, hxW⟩ g,
+    ← ring_hom.map_mul, ← ring_hom.map_one (X.presheaf.germ (⟨x.1, hxW⟩ : W))] at heq,
+  obtain ⟨W', hxW', i₁, i₂, heq'⟩ := X.presheaf.germ_eq x.1 hxW hxW _ _ heq,
+  use [W', i₁ ≫ opens.inf_le_left U V, hxW'],
+  rw [ring_hom.map_one, ring_hom.map_mul, ← comp_apply, ← X.presheaf.map_comp, ← op_comp] at heq',
+  exact is_unit_of_mul_eq_one _ _ heq',
+end
+lemma is_unit_of_is_unit_germ (U : opens X) (f : X.presheaf.obj (op U))
+  (h : ∀ x : U, is_unit (X.presheaf.germ x f)) :
+  is_unit f :=
+begin
+def basic_open {U : opens X} (f : X.presheaf.obj (op U)) : opens X :=
+{ val := coe '' { x : U | is_unit (X.presheaf.germ x f) },
+  property := begin
+    rw is_open_iff_forall_mem_open,
+    rintros _ ⟨x, hx, rfl⟩,
+    obtain ⟨V, i, hxV, hf⟩ := X.is_unit_res_of_is_unit_germ U f x hx,
+    use V.1,
+    refine ⟨_, V.2, hxV⟩,
+    intros y hy,
+    use (⟨y, i.le hy⟩ : U),
+    rw set.mem_set_of_eq,
+    split,
+    { convert ring_hom.is_unit_map (X.presheaf.germ ⟨y, hy⟩) hf,
+      exact (X.presheaf.germ_res_apply i ⟨y, hy⟩ f).symm },
+    { refl }
+  end }
+@[simp]
+lemma mem_basic_open {U : opens X} (f : X.presheaf.obj (op U)) (x : U) :
+  ↑x ∈ X.basic_open f ↔ is_unit (X.presheaf.germ x f) :=
+begin
+  split,
+  { rintro ⟨x, hx, a⟩, cases subtype.eq a, exact hx },
+  { intro h, exact ⟨x, h, rfl⟩ },
+end
+@[simp]
+lemma mem_top_basic_open (f : X.presheaf.obj (op ⊤)) (x : X) :
+  x ∈ X.basic_open f ↔ is_unit (X.presheaf.germ ⟨x, show x ∈ (⊤ : opens X), by trivial⟩ f) :=
+mem_basic_open X f ⟨x, _⟩
+lemma basic_open_subset {U : opens X} (f : X.presheaf.obj (op U)) : X.basic_open f ⊆ U :=
+by { rintros _ ⟨x, hx, rfl⟩, exact x.2 }
+lemma is_unit_res_basic_open {U : opens X} (f : X.presheaf.obj (op U)) :
+  is_unit (X.presheaf.map (@hom_of_le (opens X) _ _ _ (X.basic_open_subset f)).op f) :=
+begin
+  apply is_unit_of_is_unit_germ,
+  rintro ⟨_, ⟨x, hx, rfl⟩⟩,
+  convert hx,
+  rw germ_res_apply,
+  refl,
+end
+@[simp] lemma basic_open_res {U V : (opens X)ᵒᵖ} (i : U ⟶ V) (f : X.presheaf.obj U) :
+  @basic_open X (unop V) (X.presheaf.map i f) = (unop V) ∩ @basic_open X (unop U) f :=
+begin
+  induction U using opposite.rec,
+  induction V using opposite.rec,
+  let g := i.unop, have : i = g.op := rfl, clear_value g, subst this,
+  ext, split,
+  { rintro ⟨x, (hx : is_unit _), rfl⟩,
+    rw germ_res_apply at hx,
+    exact ⟨x.2, g x, hx, rfl⟩ },
+  { rintros ⟨hxV, x, hx, rfl⟩,
+    refine ⟨⟨x, hxV⟩, (_ : is_unit _), rfl⟩,
+    rwa germ_res_apply }
+end

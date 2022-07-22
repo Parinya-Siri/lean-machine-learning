@@ -1,0 +1,352 @@
+import tactic.clear
+import tactic.dependencies
+import tactic.fresh_names
+import tactic.generalizes
+import tactic.has_variable_names
+import tactic.unify_equations
+open expr native
+open tactic.interactive (case_tag.from_tag_hyps)
+namespace tactic
+namespace eliminate
+declare_trace eliminate_hyp
+meta def trace_eliminate_hyp {α} [has_to_format α] (msg : thunk α) : tactic unit :=
+when_tracing `eliminate_hyp $ trace $ to_fmt "eliminate_hyp: " ++ to_fmt (msg ())
+meta def trace_state_eliminate_hyp {α} [has_to_format α] (msg : thunk α) :
+  tactic unit := do
+  state ← read,
+  trace_eliminate_hyp $ format.join
+@[derive has_reflect]
+meta structure constructor_argument_info :=
+(aname : name)
+(type : expr)
+(dependent : bool)
+(index_occurrences : list ℕ)
+(recursive_leading_pis : option ℕ)
+namespace constructor_argument_info
+meta def is_recursive (c : constructor_argument_info) :=
+c.recursive_leading_pis.is_some
+end constructor_argument_info
+@[derive has_reflect]
+meta structure constructor_info :=
+(cname : name)
+(non_param_args : list constructor_argument_info)
+(num_non_param_args : ℕ)
+(rec_args : list constructor_argument_info)
+(num_rec_args : ℕ)
+meta def constructor_info.num_nameable_hypotheses (c : constructor_info) : ℕ :=
+c.num_non_param_args + c.num_rec_args
+@[derive has_reflect]
+meta structure inductive_info :=
+(iname : name)
+(constructors : list constructor_info)
+(num_constructors : ℕ)
+(type : expr)
+(num_params : ℕ)
+(num_indices : ℕ)
+meta structure major_premise_info :=
+(mpname : name)
+(mpexpr : expr)
+(type : expr)
+(args : rb_map ℕ expr)
+meta def get_index_occurrences (num_params : ℕ) (ret_type : expr) :
+  tactic (rb_lmap expr ℕ) := do
+  ret_args ← get_app_args_whnf ret_type,
+  ret_args.mfoldl_with_index
+    (λ i occ_map ret_arg, do
+      if i < num_params
+        then pure occ_map
+        else do
+          let ret_arg_consts := ret_arg.list_local_consts',
+          ret_arg_consts.mfold occ_map $ λ c occ_map, do
+            ret_arg_type ← infer_type ret_arg,
+            eq ← index_occurrence_type_match c.local_type ret_arg_type,
+            pure $ if eq then occ_map.insert c i else occ_map)
+    mk_rb_map
+meta def match_recursive_constructor_arg (I : name) (T : expr) :
+  tactic (option ℕ) := do
+  (pis, base) ← open_pis_whnf T,
+  base ← get_app_fn_whnf base,
+  pure $
+    match base with
+    | (const c _) := if c = I then some pis.length else none
+    | _ := none
+    end
+meta def get_constructor_argument_info (inductive_name : name)
+  (num_params : ℕ) (T : expr) :
+  tactic (list constructor_argument_info) := do
+  ⟨args, ret⟩ ← open_pis_whnf_dep T,
+  index_occs ← get_index_occurrences num_params ret,
+  args.mmap $ λ ⟨c, dep⟩, do
+    let occs := rb_set.of_list $ index_occs.find c,
+    let type := c.local_type,
+    recursive_leading_pis ← match_recursive_constructor_arg inductive_name type,
+    pure ⟨c.local_pp_name, type, dep, occs.to_list, recursive_leading_pis⟩
+meta def get_constructor_info (iname : name) (num_params : ℕ) (c : name) :
+  tactic constructor_info := do
+  env ← get_env,
+  when (¬ env.is_constructor c) $ fail! "Expected {c} to be a constructor.",
+  decl ← env.get c,
+  args ← get_constructor_argument_info iname num_params decl.type,
+  let non_param_args := args.drop num_params,
+  let rec_args := non_param_args.filter $ λ ainfo, ainfo.is_recursive,
+  pure
+    { cname := decl.to_name,
+      non_param_args := non_param_args,
+      num_non_param_args := non_param_args.length,
+      rec_args := rec_args,
+      num_rec_args := rec_args.length }
+meta def get_inductive_info (I : name) : tactic inductive_info := do
+  env ← get_env,
+  when (¬ env.is_inductive I) $ fail! "Expected {I} to be an inductive type.",
+  decl ← env.get I,
+  let type := decl.type,
+  let num_params := env.inductive_num_params I,
+  let num_indices := env.inductive_num_indices I,
+  let constructor_names := env.constructors_of I,
+  constructors ← constructor_names.mmap
+    (get_constructor_info I num_params),
+  pure
+    { iname := I,
+      constructors := constructors,
+      num_constructors := constructors.length,
+      type := type,
+      num_params := num_params,
+      num_indices := num_indices }
+meta def get_major_premise_info (major_premise : expr) :
+  tactic major_premise_info := do
+  type ← infer_type major_premise,
+  ⟨f, args⟩ ← get_app_fn_args_whnf type,
+  pure
+    { mpname := major_premise.local_pp_name,
+      mpexpr := major_premise,
+      type := type,
+      args := args.to_rb_map }
+meta structure constructor_argument_naming_info :=
+(mpinfo : major_premise_info)
+(iinfo : inductive_info)
+(cinfo : constructor_info)
+(ainfo : constructor_argument_info)
+@[reducible] meta def constructor_argument_naming_rule : Type :=
+constructor_argument_naming_info → tactic (list name)
+meta def constructor_argument_naming_rule_rec : constructor_argument_naming_rule :=
+λ i, pure $ if i.ainfo.is_recursive then [i.mpinfo.mpname] else []
+meta def constructor_argument_naming_rule_index : constructor_argument_naming_rule :=
+λ i,
+let index_occs := i.ainfo.index_occurrences in
+let major_premise_args := i.mpinfo.args in
+let get_major_premise_arg_local_names : ℕ → option (name × name) := λ i, do
+{ arg ← major_premise_args.find i,
+  (uname, ppname, _) ← arg.match_local_const,
+  pure (uname, ppname) } in
+let local_index_instantiations :=
+  (index_occs.map get_major_premise_arg_local_names).all_some in
+pure $
+  match local_index_instantiations with
+  | none := []
+  | some [] := []
+  | some ((uname, ppname) :: is) :=
+    if is.all (λ ⟨uname', _⟩, uname' = uname)
+      then [ppname]
+      else []
+  end
+meta def constructor_argument_naming_rule_named : constructor_argument_naming_rule :=
+λ i,
+let arg_name := i.ainfo.aname in
+let arg_dep := i.ainfo.dependent in
+pure $
+  if ! arg_dep && arg_name.is_likely_generated_binder_name
+    then []
+    else [arg_name]
+meta def constructor_argument_naming_rule_type : constructor_argument_naming_rule :=
+λ i, typical_variable_names i.ainfo.type <|> pure []
+meta def constructor_argument_naming_rule_prop : constructor_argument_naming_rule :=
+λ i, do
+  (sort level.zero) ← infer_type i.ainfo.type | pure [],
+  pure [`h]
+meta def constructor_argument_naming_rule_fallback : constructor_argument_naming_rule :=
+λ _, pure [`x]
+meta def apply_constructor_argument_naming_rules
+  (info : constructor_argument_naming_info)
+  (rules : list constructor_argument_naming_rule) : tactic (list name) := do
+  names ← try_core $ rules.mfirst (λ r, do
+    names ← r info,
+    match names with
+    | [] := failed
+    | _ := pure names
+    end),
+  match names with
+  | none := fail
+      "apply_constructor_argument_naming_rules: no applicable naming rule"
+  | (some names) := pure names
+  end
+meta def constructor_argument_names (info : constructor_argument_naming_info) :
+  tactic (list name) :=
+apply_constructor_argument_naming_rules info
+  [ constructor_argument_naming_rule_rec
+  , constructor_argument_naming_rule_index
+  , constructor_argument_naming_rule_named
+  , constructor_argument_naming_rule_type
+  , constructor_argument_naming_rule_prop
+  , constructor_argument_naming_rule_fallback ]
+meta def intron_fresh (n : ℕ) : tactic (list expr) :=
+iterate_exactly n (mk_fresh_name >>= intro)
+meta def constructor_intros (generate_induction_hyps : bool)
+  (cinfo : constructor_info) :
+  tactic (list (name × constructor_argument_info) ×
+          list (name × name × constructor_argument_info)) := do
+  let args := cinfo.non_param_args,
+  arg_hyps ← intron_fresh cinfo.num_non_param_args,
+  let args := (arg_hyps.map expr.local_pp_name).zip args,
+  tt ← pure generate_induction_hyps | pure (args, []),
+  let rec_args := args.filter $ λ x, x.2.is_recursive,
+  ih_hyps ← intron_fresh cinfo.num_rec_args,
+  let ihs := (ih_hyps.map expr.local_pp_name).zip rec_args,
+  pure (args, ihs)
+meta def ih_name (arg_name : name) : name :=
+mk_simple_name ("ih_" ++ arg_name.to_string)
+@[derive has_reflect]
+meta inductive with_pattern
+| auto
+| clear
+| exact (n : name)
+namespace with_pattern
+open lean (parser)
+open lean.parser
+protected meta def parser : lean.parser with_pattern :=
+(tk "-" *> pure with_pattern.clear) <|>
+(tk "_" *> pure with_pattern.auto) <|>
+(with_pattern.exact <$> ident)
+meta def clause_parser : lean.parser (list with_pattern) :=
+(tk "with" *> many with_pattern.parser) <|> pure []
+meta def to_name_spec (auto_candidates : tactic (list name)) :
+  with_pattern → tactic (option (name ⊕ list name))
+| auto := (some ∘ sum.inr) <$> auto_candidates
+| clear := pure none
+| (exact n) := pure $ some $ sum.inl n
+end with_pattern
+meta def clear_dependent_if_exists (h : name) : tactic unit := do
+  (some h) ← try_core $ get_local h | pure (),
+  clear' tt [h]
+meta def constructor_renames (generate_induction_hyps : bool)
+  (mpinfo : major_premise_info) (iinfo : inductive_info)
+  (cinfo : constructor_info) (with_patterns : list with_pattern)
+  (args : list (name × constructor_argument_info))
+  (ihs : list (name × name × constructor_argument_info)) :
+  tactic (list expr × list expr) := do
+@[derive has_reflect]
+inductive generalization_mode
+| generalize_all_except (hs : list name) : generalization_mode
+| generalize_only (hs : list name) : generalization_mode
+instance : inhabited generalization_mode :=
+⟨ generalization_mode.generalize_all_except []⟩
+namespace generalization_mode
+meta def to_generalize (major_premise : expr) :
+  generalization_mode → tactic name_set
+| (generalize_only ns) := do
+  major_premise_rev_deps ← reverse_dependencies_of_hyps [major_premise],
+  let major_premise_rev_deps :=
+    name_set.of_list $ major_premise_rev_deps.map local_uniq_name,
+  ns ← ns.mmap (functor.map local_uniq_name ∘ get_local),
+  pure $ major_premise_rev_deps.insert_list ns
+| (generalize_all_except fixed) := do
+  fixed ← fixed.mmap get_local,
+  tgt ← target,
+  let tgt_dependencies := tgt.list_local_const_unique_names,
+  major_premise_type ← infer_type major_premise,
+  major_premise_dependencies ← dependency_name_set_of_hyp_inclusive major_premise,
+  defs ← local_defs,
+  fixed_dependencies ←
+    (major_premise :: defs ++ fixed).mmap dependency_name_set_of_hyp_inclusive,
+  let fixed_dependencies := fixed_dependencies.foldl name_set.union mk_name_set,
+  ctx ← local_context,
+  to_revert ← ctx.mmap_filter $ λ h, do
+  { h_depends_on_major_premise_deps ←
+    pure $ if rev then some h_name else none },
+  pure $ name_set.of_list to_revert
+end generalization_mode
+meta def generalize_hyps (major_premise : expr) (gm : generalization_mode) :
+  tactic ℕ := do
+  to_revert ← gm.to_generalize major_premise,
+  ⟨n, _⟩ ← unfreezing (revert_name_set to_revert),
+  pure n
+meta def generalize_complex_index_args (major_premise : expr) (num_params : ℕ)
+  (generate_induction_hyps : bool) : tactic (expr × ℕ × list name × ℕ) :=
+focus1 $ do
+  major_premise_type ← infer_type major_premise,
+  (major_premise_head, major_premise_args) ←
+    get_app_fn_args_whnf major_premise_type,
+  let ⟨major_premise_param_args, major_premise_index_args⟩ :=
+    major_premise_args.split_at num_params,
+meta def process_index_equation : expr → tactic (expr × option expr)
+| h@(local_const _ ppname binfo
+    T@(app (app (app (const `eq [u]) type) lhs) rhs)) := do
+  rhs_eq_lhs ← succeeds $ unify rhs lhs,
+meta def assign_local_to_unassigned_mvar (mv : expr) (pp_name : name)
+  (binfo : binder_info) : tactic (option expr) := do
+  ff ← is_assigned mv | pure none,
+  type ← infer_type mv,
+  c ← mk_local' pp_name binfo type,
+  unify mv c,
+  pure c
+meta def assign_locals_to_unassigned_mvars
+  (mvars : list (expr × name × binder_info)) : tactic (list expr) :=
+mvars.mmap_filter $ λ ⟨mv, pp_name, binfo⟩,
+  assign_local_to_unassigned_mvar mv pp_name binfo
+meta def simplify_ih (num_leading_pis : ℕ) (num_generalized : ℕ)
+  (num_index_vars : ℕ) (ih : expr) : tactic expr := do
+  T ← infer_type ih,
+open eliminate
+meta def eliminate_hyp (generate_ihs : bool) (major_premise : expr)
+  (gm := generalization_mode.generalize_all_except [])
+  (with_patterns : list with_pattern := []) : tactic unit :=
+focus1 $ do
+  mpinfo ← get_major_premise_info major_premise,
+  let major_premise_type := mpinfo.type,
+  let major_premise_args := mpinfo.args.values.reverse,
+  env ← get_env,
+meta def eliminate_expr (generate_induction_hyps : bool) (major_premise : expr)
+  (eq_name : option name := none) (gm := generalization_mode.generalize_all_except [])
+  (with_patterns : list with_pattern := []) : tactic unit := do
+  major_premise_revdeps ← reverse_dependencies_of_hyps [major_premise],
+  num_reverted ← unfreezing (revert_lst major_premise_revdeps),
+  hyp ← match eq_name with
+      | some h := do
+          x ← get_unused_name `x,
+          interactive.generalize h () (to_pexpr major_premise, x),
+          get_local x
+      | none := do
+          if major_premise.is_local_constant
+            then pure major_premise
+            else do
+              x ← get_unused_name `x,
+              generalize' major_premise x
+      end,
+  intron num_reverted,
+  eliminate_hyp generate_induction_hyps hyp gm with_patterns
+end tactic
+namespace tactic.interactive
+open tactic tactic.eliminate interactive interactive.types lean.parser
+meta def generalisation_mode_parser : lean.parser generalization_mode :=
+  (tk "fixing" *>
+    ((tk "*" *> pure (generalization_mode.generalize_only []))
+      <|>
+      generalization_mode.generalize_all_except <$> many ident))
+  <|>
+  (tk "generalizing" *> generalization_mode.generalize_only <$> many ident)
+  <|>
+  pure (generalization_mode.generalize_all_except [])
+meta def induction' (major_premise : parse cases_arg_p)
+  (gm : parse generalisation_mode_parser)
+  (with_patterns : parse with_pattern.clause_parser) :
+  tactic unit := do
+  let ⟨eq_name, e⟩ := major_premise,
+  e ← to_expr e,
+  eliminate_expr tt e eq_name gm with_patterns
+meta def cases' (major_premise : parse cases_arg_p)
+  (with_patterns : parse with_pattern.clause_parser) :
+  tactic unit := do
+  let ⟨eq_name, e⟩ := major_premise,
+  e ← to_expr e,
+  eliminate_expr ff e eq_name (generalization_mode.generalize_only [])
+    with_patterns
+end tactic.interactive

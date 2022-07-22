@@ -1,0 +1,43 @@
+import combinatorics.composition
+import data.nat.parity
+import tactic.apply_fun
+variables {α : Type*}
+open multiset
+open_locale big_operators
+namespace nat
+@[ext, derive decidable_eq] structure partition (n : ℕ) :=
+(parts : multiset ℕ)
+(parts_pos : ∀ {i}, i ∈ parts → 0 < i)
+(parts_sum : parts.sum = n)
+namespace partition
+def of_composition (n : ℕ) (c : composition n) : partition n :=
+{ parts := c.blocks,
+  parts_pos := λ i hi, c.blocks_pos hi,
+  parts_sum := by rw [multiset.coe_sum, c.blocks_sum] }
+lemma of_composition_surj {n : ℕ} : function.surjective (of_composition n) :=
+begin
+  rintro ⟨b, hb₁, hb₂⟩,
+  rcases quotient.exists_rep b with ⟨b, rfl⟩,
+  refine ⟨⟨b, λ i hi, hb₁ hi, _⟩, partition.ext _ _ rfl⟩,
+  simpa using hb₂
+end
+def of_multiset (l : multiset ℕ) : partition l.sum :=
+of_sums _ l rfl
+def indiscrete_partition (n : ℕ) : partition n :=
+of_sums n {n} rfl
+instance {n : ℕ} : inhabited (partition n) := ⟨indiscrete_partition n⟩
+lemma count_of_sums_of_ne_zero {n : ℕ} {l : multiset ℕ} (hl : l.sum = n) {i : ℕ} (hi : i ≠ 0) :
+  (of_sums n l hl).parts.count i = l.count i :=
+count_filter_of_pos hi
+lemma count_of_sums_zero {n : ℕ} {l : multiset ℕ} (hl : l.sum = n) :
+  (of_sums n l hl).parts.count 0 = 0 :=
+count_filter_of_neg (λ h, h rfl)
+instance (n : ℕ) : fintype (partition n) :=
+fintype.of_surjective (of_composition n) of_composition_surj
+def odds (n : ℕ) : finset (partition n) :=
+finset.univ.filter (λ c, ∀ i ∈ c.parts, ¬ even i)
+def distincts (n : ℕ) : finset (partition n) :=
+finset.univ.filter (λ c, c.parts.nodup)
+def odd_distincts (n : ℕ) : finset (partition n) := odds n ∩ distincts n
+end partition
+end nat

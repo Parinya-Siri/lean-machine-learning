@@ -1,0 +1,25 @@
+import category_theory.category.basic
+open category_theory
+meta def slice := conv.slice
+end interactive
+end conv
+namespace tactic
+open conv
+private meta def conv_target' (c : conv unit) : tactic unit :=
+do t ← target,
+   (new_t, pr) ← c.convert t,
+   replace_target new_t pr,
+   try tactic.triv, try (tactic.reflexivity reducible)
+namespace interactive
+setup_tactic_parser
+meta def slice_lhs (a b : parse small_nat) (t : conv.interactive.itactic) : tactic unit :=
+do conv_target' (conv.interactive.to_lhs >> slice a b >> t)
+meta def slice_rhs (a b : parse small_nat) (t : conv.interactive.itactic) : tactic unit :=
+do conv_target' (conv.interactive.to_rhs >> slice a b >> t)
+end interactive
+end tactic
+add_tactic_doc
+{ name := "slice",
+  category := doc_category.tactic,
+  decl_names := [`tactic.interactive.slice_lhs, `tactic.interactive.slice_rhs],
+  tags := ["category theory"] }

@@ -1,0 +1,63 @@
+import algebraic_topology.simplicial_object
+import algebraic_topology.topological_simplex
+import category_theory.limits.presheaf
+import category_theory.limits.types
+import category_theory.yoneda
+import topology.category.Top.limits
+universes v u
+open category_theory
+open_locale simplicial
+@[derive [large_category, limits.has_limits, limits.has_colimits]]
+def sSet : Type (u+1) := simplicial_object (Type u)
+namespace sSet
+def standard_simplex : simplex_category ⥤ sSet := yoneda
+localized "notation `Δ[`n`]` := sSet.standard_simplex.obj (simplex_category.mk n)" in simplicial
+instance : inhabited sSet := ⟨Δ[0]⟩
+section
+def as_order_hom {n} {m} (α : Δ[n].obj m) :
+  order_hom (fin (m.unop.len+1)) (fin (n+1)) := α.to_order_hom
+end
+def boundary (n : ℕ) : sSet :=
+{ obj := λ m, {α : Δ[n].obj m // ¬ function.surjective (as_order_hom α)},
+  map := λ m₁ m₂ f α, ⟨f.unop ≫ (α : Δ[n].obj m₁),
+  by { intro h, apply α.property, exact function.surjective.of_comp h }⟩ }
+localized "notation `∂Δ[`n`]` := sSet.boundary n" in simplicial
+def boundary_inclusion (n : ℕ) :
+  ∂Δ[n] ⟶ Δ[n] :=
+{ app := λ m (α : {α : Δ[n].obj m // _}), α }
+def horn (n : ℕ) (i : fin (n+1)) : sSet :=
+{ obj := λ m,
+  { α : Δ[n].obj m // set.range (as_order_hom α) ∪ {i} ≠ set.univ },
+  map := λ m₁ m₂ f α, ⟨f.unop ≫ (α : Δ[n].obj m₁),
+  begin
+    intro h, apply α.property,
+    rw set.eq_univ_iff_forall at h ⊢, intro j,
+    apply or.imp _ id (h j),
+    intro hj,
+    exact set.range_comp_subset_range _ _ hj,
+  end⟩ }
+localized "notation `Λ[`n`, `i`]` := sSet.horn (n : ℕ) i" in simplicial
+def horn_inclusion (n : ℕ) (i : fin (n+1)) :
+  Λ[n, i] ⟶ Δ[n] :=
+{ app := λ m (α : {α : Δ[n].obj m // _}), α }
+section examples
+open_locale simplicial
+noncomputable def S1 : sSet :=
+limits.colimit $ limits.parallel_pair
+  ((standard_simplex.map $ simplex_category.δ 0) : Δ[0] ⟶ Δ[1])
+  (standard_simplex.map $ simplex_category.δ 1)
+end examples
+@[derive [large_category, limits.has_limits, limits.has_colimits]]
+def truncated (n : ℕ) := simplicial_object.truncated (Type u) n
+def sk (n : ℕ) : sSet ⥤ sSet.truncated n := simplicial_object.sk n
+instance {n} : inhabited (sSet.truncated n) := ⟨(sk n).obj $ Δ[0]⟩
+end sSet
+noncomputable def Top.to_sSet : Top ⥤ sSet :=
+colimit_adj.restricted_yoneda simplex_category.to_Top
+noncomputable def sSet.to_Top : sSet ⥤ Top :=
+colimit_adj.extend_along_yoneda simplex_category.to_Top
+noncomputable def sSet_Top_adj : sSet.to_Top ⊣ Top.to_sSet :=
+colimit_adj.yoneda_adjunction _
+noncomputable def sSet.to_Top_simplex :
+  (yoneda : simplex_category ⥤ _) ⋙ sSet.to_Top ≅ simplex_category.to_Top :=
+colimit_adj.is_extension_along_yoneda _

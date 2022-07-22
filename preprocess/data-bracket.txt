@@ -1,0 +1,2 @@
+class has_bracket (L M : Type*) := (bracket : L → M → M)
+notation `⁅`x`,` y`⁆` := has_bracket.bracket x y

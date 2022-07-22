@@ -1,0 +1,157 @@
+import category_theory.action
+import combinatorics.quiver.arborescence
+import combinatorics.quiver.connected_component
+import group_theory.is_free_group
+noncomputable theory
+open_locale classical
+universes v u
+open category_theory category_theory.action_category category_theory.single_obj quiver
+  is_free_group as fgp
+@[nolint unused_arguments has_inhabited_instance]
+def is_free_groupoid.generators (G) [groupoid G] := G
+class is_free_groupoid (G) [groupoid.{v} G] :=
+(quiver_generators : quiver.{v+1} (is_free_groupoid.generators G))
+(of : Π {a b : is_free_groupoid.generators G}, (a ⟶ b) → ((show G, from a) ⟶ b))
+(unique_lift : ∀ {X : Type v} [group X] (f : labelling (is_free_groupoid.generators G) X),
+                ∃! F : G ⥤ single_obj X, ∀ a b (g : a ⟶ b),
+                  F.map (of g) = f g)
+namespace is_free_groupoid
+attribute [instance] quiver_generators
+@[ext]
+lemma ext_functor {G} [groupoid.{v} G] [is_free_groupoid G] {X : Type v} [group X]
+  (f g : G ⥤ single_obj X)
+  (h : ∀ a b (e : a ⟶ b), f.map (of e) = g.map (of e)) :
+  f = g :=
+let ⟨_, _, u⟩ := @unique_lift G _ _ X _ (λ (a b : generators G) (e : a ⟶ b), g.map (of e)) in
+trans (u _ h) (u _ (λ _ _ _, rfl)).symm
+instance action_groupoid_is_free {G A : Type u} [group G] [is_free_group G] [mul_action G A] :
+  is_free_groupoid (action_category G A) :=
+{ quiver_generators := ⟨λ a b, { e : fgp.generators G // fgp.of e • a.back = b.back }⟩,
+  of := λ a b e, ⟨fgp.of e, e.property⟩,
+  unique_lift := begin
+    introsI X _ f,
+    let f' : fgp.generators G → (A → X) ⋊[mul_aut_arrow] G :=
+      λ e, ⟨λ b, @f ⟨(), _⟩ ⟨(), b⟩ ⟨e, smul_inv_smul _ b⟩, fgp.of e⟩,
+    rcases fgp.unique_lift f' with ⟨F', hF', uF'⟩,
+    refine ⟨uncurry F' _, _, _⟩,
+    { suffices : semidirect_product.right_hom.comp F' = monoid_hom.id _,
+      { exact monoid_hom.ext_iff.mp this },
+      ext,
+      rw [monoid_hom.comp_apply, hF'],
+      refl },
+    { rintros ⟨⟨⟩, a : A⟩ ⟨⟨⟩, b⟩ ⟨e, h : fgp.of e • a = b⟩,
+      change (F' (fgp.of _)).left _ = _,
+      rw hF',
+      cases (inv_smul_eq_iff.mpr h.symm),
+      refl },
+    { intros E hE,
+      have : curry E = F',
+      { apply uF',
+        intro e,
+        ext,
+        { convert hE _ _ _, refl },
+        { refl } },
+      apply functor.hext,
+      { intro, apply unit.ext },
+      { refine action_category.cases _, intros,
+        simp only [←this, uncurry_map, curry_apply_left, coe_back, hom_of_pair.val] } },
+  end }
+namespace spanning_tree
+variables {G : Type u} [groupoid.{u} G] [is_free_groupoid G]
+  (T : wide_subquiver (symmetrify $ generators G)) [arborescence T]
+private def root' : G := show T, from root T
+def tree_hom (a : G) : root' T ⟶ a := hom_of_path T default
+lemma tree_hom_eq {a : G} (p : path (root T) a) : tree_hom T a = hom_of_path T p :=
+by rw [tree_hom, unique.default_eq]
+@[simp] lemma tree_hom_root : tree_hom T (root' T) = 𝟙 _ :=
+def loop_of_hom {a b : G} (p : a ⟶ b) : End (root' T) :=
+tree_hom T a ≫ p ≫ inv (tree_hom T b)
+lemma loop_of_hom_eq_id {a b : generators G} (e ∈ wide_subquiver_symmetrify T a b) :
+  loop_of_hom T (of e) = 𝟙 (root' T) :=
+begin
+  rw [loop_of_hom, ←category.assoc, is_iso.comp_inv_eq, category.id_comp],
+  cases H,
+  { rw [tree_hom_eq T (path.cons default ⟨sum.inl e, H⟩), hom_of_path], refl },
+  { rw [tree_hom_eq T (path.cons default ⟨sum.inr e, H⟩), hom_of_path],
+    simp only [is_iso.inv_hom_id, category.comp_id, category.assoc, tree_hom] }
+end
+@[simps] def functor_of_monoid_hom {X} [monoid X] (f : End (root' T) →* X) :
+  G ⥤ single_obj X :=
+{ obj := λ _, (),
+  map := λ a b p, f (loop_of_hom T p),
+  map_id' := begin
+    intro a,
+    rw [loop_of_hom, category.id_comp, is_iso.hom_inv_id, ←End.one_def, f.map_one, id_as_one],
+ end,
+  map_comp' := begin
+    intros,
+    rw [comp_as_mul, ←f.map_mul],
+    simp only [is_iso.inv_hom_id_assoc, loop_of_hom, End.mul_def, category.assoc]
+  end }
+def End_is_free : is_free_group (End (root' T)) :=
+is_free_group.of_unique_lift
+  ((wide_subquiver_equiv_set_total $ wide_subquiver_symmetrify T)ᶜ : set _)
+  (λ e, loop_of_hom T (of e.val.hom))
+  begin
+    introsI X _ f,
+    let f' : labelling (generators G) X := λ a b e,
+      if h : e ∈ wide_subquiver_symmetrify T a b then 1
+      else f ⟨⟨a, b, e⟩, h⟩,
+    rcases unique_lift f' with ⟨F', hF', uF'⟩,
+    refine ⟨F'.map_End _, _, _⟩,
+    { suffices : ∀ {x y} (q : x ⟶ y), F'.map (loop_of_hom T q) = (F'.map q : X),
+      { rintro ⟨⟨a, b, e⟩, h⟩,
+        rw [functor.map_End_apply, this, hF'],
+        exact dif_neg h },
+      intros,
+      suffices : ∀ {a} (p : path (root' T) a), F'.map (hom_of_path T p) = 1,
+      { simp only [this, tree_hom, comp_as_mul, inv_as_inv, loop_of_hom,
+        inv_one, mul_one, one_mul, functor.map_inv, functor.map_comp] },
+      intros a p, induction p with b c p e ih,
+      { rw [hom_of_path, F'.map_id, id_as_one] },
+      rw [hom_of_path, F'.map_comp, comp_as_mul, ih, mul_one],
+      rcases e with ⟨e | e, eT⟩,
+      { rw hF', exact dif_pos (or.inl eT) },
+      { rw [F'.map_inv, inv_as_inv, inv_eq_one, hF'], exact dif_pos (or.inr eT) } },
+    { intros E hE,
+      ext,
+      suffices : (functor_of_monoid_hom T E).map x = F'.map x,
+      { simpa only [loop_of_hom, functor_of_monoid_hom_map, is_iso.inv_id, tree_hom_root,
+          category.id_comp, category.comp_id] using this },
+      congr,
+      apply uF',
+      intros a b e,
+      change E (loop_of_hom T _) = dite _ _ _,
+      split_ifs,
+      { rw [loop_of_hom_eq_id T e h, ←End.one_def, E.map_one] },
+      { exact hE ⟨⟨a, b, e⟩, h⟩ } }
+  end
+end spanning_tree
+private def symgen {G : Type u} [groupoid.{v} G] [is_free_groupoid G] :
+  G → symmetrify (generators G) := id
+lemma path_nonempty_of_hom {G} [groupoid.{u u} G] [is_free_groupoid G] {a b : G} :
+  nonempty (a ⟶ b) → nonempty (path (symgen a) (symgen b)) :=
+begin
+  rintro ⟨p⟩,
+  rw [←@weakly_connected_component.eq (generators G), eq_comm,
+    ←free_group.of_injective.eq_iff, ←mul_inv_eq_one],
+  let X := free_group (weakly_connected_component $ generators G),
+  let f : G → X := λ g, free_group.of (weakly_connected_component.mk g),
+  let F : G ⥤ single_obj X := single_obj.difference_functor f,
+  change F.map p = ((category_theory.functor.const G).obj ()).map p,
+  congr, ext,
+  rw [functor.const.obj_map, id_as_one, difference_functor_map, mul_inv_eq_one],
+  apply congr_arg free_group.of,
+  apply (weakly_connected_component.eq _ _).mpr,
+  exact ⟨hom.to_path (sum.inr e)⟩,
+end
+instance generators_connected (G) [groupoid.{u u} G] [is_connected G] [is_free_groupoid G]
+  (r : G) : rooted_connected (symgen r) :=
+⟨λ b, path_nonempty_of_hom (category_theory.nonempty_hom_of_connected_groupoid r b)⟩
+instance End_is_free_of_connected_free {G} [groupoid G] [is_connected G] [is_free_groupoid G]
+  (r : G) : is_free_group (End r) :=
+spanning_tree.End_is_free $ geodesic_subtree (symgen r)
+end is_free_groupoid
+instance subgroup_is_free_of_is_free {G : Type u} [group G] [is_free_group G]
+  (H : subgroup G) : is_free_group H :=
+is_free_group.of_mul_equiv (End_mul_equiv_subgroup H)

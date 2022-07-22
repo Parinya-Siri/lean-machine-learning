@@ -1,0 +1,92 @@
+import data.polynomial.algebra_map
+import data.polynomial.derivative
+import data.nat.choose.cast
+import number_theory.bernoulli
+noncomputable theory
+open_locale big_operators
+open_locale nat polynomial
+open nat finset
+namespace polynomial
+def bernoulli (n : ℕ) : ℚ[X] :=
+  ∑ i in range (n + 1), polynomial.monomial (n - i) ((_root_.bernoulli i) * (choose n i))
+lemma bernoulli_def (n : ℕ) : bernoulli n =
+  ∑ i in range (n + 1), polynomial.monomial i ((_root_.bernoulli (n - i)) * (choose n i)) :=
+begin
+  rw [←sum_range_reflect, add_succ_sub_one, add_zero, bernoulli],
+  apply sum_congr rfl,
+  rintros x hx,
+  rw mem_range_succ_iff at hx, rw [choose_symm hx, tsub_tsub_cancel_of_le hx],
+end
+section examples
+@[simp] lemma bernoulli_zero : bernoulli 0 = 1 :=
+by simp [bernoulli]
+@[simp] lemma bernoulli_eval_zero (n : ℕ) : (bernoulli n).eval 0 = _root_.bernoulli n :=
+begin
+ rw [bernoulli, eval_finset_sum, sum_range_succ],
+  have : ∑ (x : ℕ) in range n, _root_.bernoulli x * (n.choose x) * 0 ^ (n - x) = 0,
+  { apply sum_eq_zero (λ x hx, _),
+    have h : 0 < n - x := tsub_pos_of_lt (mem_range.1 hx),
+    simp [h] },
+  simp [this],
+end
+@[simp] lemma bernoulli_eval_one (n : ℕ) : (bernoulli n).eval 1 = _root_.bernoulli' n :=
+begin
+  simp only [bernoulli, eval_finset_sum],
+  simp only [←succ_eq_add_one, sum_range_succ, mul_one, cast_one, choose_self,
+    (_root_.bernoulli _).mul_comm, sum_bernoulli, one_pow, mul_one, eval_C, eval_monomial],
+  by_cases h : n = 1,
+  { norm_num [h], },
+  { simp [h],
+    exact bernoulli_eq_bernoulli'_of_ne_one h, }
+end
+end examples
+lemma derivative_bernoulli_add_one (k : ℕ) :
+  (bernoulli (k + 1)).derivative = (k + 1) * bernoulli k :=
+begin
+  simp_rw [bernoulli, derivative_sum, derivative_monomial, nat.sub_sub, nat.add_sub_add_right],
+lemma bernoulli_eq_sub_sum (n : ℕ) : (n.succ : ℚ) • bernoulli n = monomial n (n.succ : ℚ) -
+  ∑ k in finset.range n, ((n + 1).choose k : ℚ) • bernoulli k :=
+by rw [nat.cast_succ, ← sum_bernoulli n, sum_range_succ, add_sub_cancel',
+  choose_succ_self_right, nat.cast_succ]
+lemma sum_range_pow_eq_bernoulli_sub (n p : ℕ) :
+  (p + 1 : ℚ) * ∑ k in range n, (k : ℚ) ^ p = (bernoulli p.succ).eval n -
+  (_root_.bernoulli p.succ) :=
+begin
+  rw [sum_range_pow, bernoulli_def, eval_finset_sum, ←sum_div, mul_div_cancel' _ _],
+  { simp_rw [eval_monomial],
+    symmetry,
+    rw [←sum_flip _, sum_range_succ],
+    simp only [tsub_self, tsub_zero, choose_zero_right, cast_one, mul_one, pow_zero,
+      add_tsub_cancel_right],
+    apply sum_congr rfl (λ x hx, _),
+    apply congr_arg2 _ (congr_arg2 _ _ _) rfl,
+    { rw nat.sub_sub_self (mem_range_le hx), },
+    { rw ←choose_symm (mem_range_le hx), }, },
+  { norm_cast, apply succ_ne_zero _, },
+end
+lemma bernoulli_succ_eval (n p : ℕ) : (bernoulli p.succ).eval n =
+  _root_.bernoulli (p.succ) + (p + 1 : ℚ) * ∑ k in range n, (k : ℚ) ^ p :=
+by { apply eq_add_of_sub_eq', rw sum_range_pow_eq_bernoulli_sub, }
+lemma bernoulli_eval_one_add (n : ℕ) (x : ℚ) :
+  (bernoulli n).eval (1 + x) = (bernoulli n).eval x + n * x^(n - 1) :=
+begin
+  apply nat.strong_induction_on n (λ d hd, _),
+  have nz : ((d.succ : ℕ): ℚ) ≠ 0,
+  { norm_cast, exact d.succ_ne_zero, },
+  apply (mul_right_inj' nz).1,
+  rw [← smul_eq_mul, ←eval_smul, bernoulli_eq_sub_sum, mul_add, ←smul_eq_mul,
+    ←eval_smul, bernoulli_eq_sub_sum, eval_sub, eval_finset_sum],
+  conv_lhs { congr, skip, apply_congr, skip, rw [eval_smul, hd x_1 (mem_range.1 H)], },
+  rw [eval_sub, eval_finset_sum],
+  simp_rw [eval_smul, smul_add],
+  rw [sum_add_distrib, sub_add, sub_eq_sub_iff_sub_eq_sub, _root_.add_sub_sub_cancel],
+  conv_rhs { congr, skip, congr, rw [succ_eq_add_one, ←choose_succ_self_right d], },
+  rw [nat.cast_succ, ← smul_eq_mul, ←sum_range_succ _ d, eval_monomial_one_add_sub],
+  simp_rw [smul_eq_mul],
+end
+open power_series
+variables {A : Type*} [comm_ring A] [algebra ℚ A]
+theorem bernoulli_generating_function (t : A) :
+  mk (λ n, aeval t ((1 / n! : ℚ) • bernoulli n)) * (exp A - 1) =
+    power_series.X * rescale t (exp A) :=
+begin

@@ -1,0 +1,37 @@
+import data.polynomial.taylor
+import ring_theory.ideal.local_ring
+import linear_algebra.adic_completion
+noncomputable theory
+universes u v
+open_locale big_operators polynomial
+open local_ring polynomial function
+lemma is_local_ring_hom_of_le_jacobson_bot {R : Type*} [comm_ring R]
+  (I : ideal R) (h : I ≤ ideal.jacobson ⊥) :
+  is_local_ring_hom (ideal.quotient.mk I) :=
+begin
+  constructor,
+  intros a h,
+  have : is_unit (ideal.quotient.mk (ideal.jacobson ⊥) a),
+  { rw [is_unit_iff_exists_inv] at *,
+    obtain ⟨b, hb⟩ := h,
+    obtain ⟨b, rfl⟩ := ideal.quotient.mk_surjective b,
+    use ideal.quotient.mk _ b,
+    rw [←(ideal.quotient.mk _).map_one, ←(ideal.quotient.mk _).map_mul, ideal.quotient.eq] at ⊢ hb,
+    exact h hb },
+  obtain ⟨⟨x, y, h1, h2⟩, rfl : x = _⟩ := this,
+  obtain ⟨y, rfl⟩ := ideal.quotient.mk_surjective y,
+  rw [← (ideal.quotient.mk _).map_mul, ← (ideal.quotient.mk _).map_one, ideal.quotient.eq,
+    ideal.mem_jacobson_bot] at h1 h2,
+  specialize h1 1,
+  simp at h1,
+  exact h1.1,
+end
+class henselian_ring (R : Type*) [comm_ring R] (I : ideal R) : Prop :=
+(jac : I ≤ ideal.jacobson ⊥)
+(is_henselian : ∀ (f : R[X]) (hf : f.monic) (a₀ : R) (h₁ : f.eval a₀ ∈ I)
+  (h₂ : is_unit (ideal.quotient.mk I (f.derivative.eval a₀))),
+  ∃ a : R, f.is_root a ∧ (a - a₀ ∈ I))
+class henselian_local_ring (R : Type*) [comm_ring R] extends local_ring R : Prop :=
+(is_henselian : ∀ (f : R[X]) (hf : f.monic) (a₀ : R) (h₁ : f.eval a₀ ∈ maximal_ideal R)
+  (h₂ : is_unit (f.derivative.eval a₀)),
+  ∃ a : R, f.is_root a ∧ (a - a₀ ∈ maximal_ideal R))

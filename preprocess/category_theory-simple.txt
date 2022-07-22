@@ -1,0 +1,118 @@
+import category_theory.limits.shapes.zero_morphisms
+import category_theory.limits.shapes.kernels
+import category_theory.abelian.basic
+import category_theory.subobject.lattice
+import order.atoms
+noncomputable theory
+open category_theory.limits
+namespace category_theory
+universes v u
+variables {C : Type u} [category.{v} C]
+section
+variables [has_zero_morphisms C]
+class simple (X : C) : Prop :=
+(mono_is_iso_iff_nonzero : ∀ {Y : C} (f : Y ⟶ X) [mono f], is_iso f ↔ (f ≠ 0))
+lemma is_iso_of_mono_of_nonzero {X Y : C} [simple Y] {f : X ⟶ Y} [mono f] (w : f ≠ 0) :
+  is_iso f :=
+(simple.mono_is_iso_iff_nonzero f).mpr w
+lemma simple.of_iso {X Y : C} [simple Y] (i : X ≅ Y) : simple X :=
+{ mono_is_iso_iff_nonzero := λ Z f m, begin
+    resetI,
+    haveI : mono (f ≫ i.hom) := mono_comp _ _,
+    split,
+    { introsI h w,
+      haveI j : is_iso (f ≫ i.hom), apply_instance,
+      rw simple.mono_is_iso_iff_nonzero at j,
+      unfreezingI { subst w, },
+      simpa using j, },
+    { intro h,
+      haveI j : is_iso (f ≫ i.hom),
+      { apply is_iso_of_mono_of_nonzero,
+        intro w, apply h,
+        simpa using (cancel_mono i.inv).2 w, },
+      rw [←category.comp_id f, ←i.hom_inv_id, ←category.assoc],
+      apply_instance, },
+  end }
+lemma kernel_zero_of_nonzero_from_simple
+  {X Y : C} [simple X] {f : X ⟶ Y} [has_kernel f] (w : f ≠ 0) :
+  kernel.ι f = 0 :=
+begin
+  classical,
+  by_contra,
+  haveI := is_iso_of_mono_of_nonzero h,
+  exact w (eq_zero_of_epi_kernel f),
+end
+lemma zero_not_simple [simple (0 : C)] : false :=
+(simple.mono_is_iso_iff_nonzero (0 : (0 : C) ⟶ (0 : C))).mp ⟨⟨0, by tidy⟩⟩ rfl
+end
+end
+lemma simple_of_cosimple (X : C) (h : ∀ {Z : C} (f : X ⟶ Z) [epi f], is_iso f ↔ (f ≠ 0)) :
+  simple X :=
+⟨λ Y f I,
+ begin
+  classical,
+  fsplit,
+  { introsI,
+    have hx := cokernel.π_of_epi f,
+    by_contra,
+    substI h,
+    exact (h _).mp (cokernel.π_of_zero _ _) hx },
+  { intro hf,
+    suffices : epi f,
+    { exactI is_iso_of_mono_of_epi _ },
+    apply preadditive.epi_of_cokernel_zero,
+    by_contra h',
+    exact cokernel_not_iso_of_nonzero hf ((h _).mpr h') }
+ end⟩
+lemma is_iso_of_epi_of_nonzero {X Y : C} [simple X] {f : X ⟶ Y} [epi f] (w : f ≠ 0) :
+  is_iso f :=
+begin
+lemma indecomposable_of_simple (X : C) [simple X] : indecomposable X :=
+⟨simple.not_is_zero X,
+λ Y Z i, begin
+  refine or_iff_not_imp_left.mpr (λ h, _),
+  rw is_zero.iff_split_mono_eq_zero (biprod.inl : Y ⟶ Y ⊞ Z) at h,
+  change biprod.inl ≠ 0 at h,
+  rw ←(simple.mono_is_iso_iff_nonzero biprod.inl) at h,
+  { rwa biprod.is_iso_inl_iff_is_zero at h, },
+  { exact simple.of_iso i.symm, },
+  { apply_instance, },
+end⟩
+end indecomposable
+section subobject
+variables [has_zero_morphisms C] [has_zero_object C]
+open_locale zero_object
+open subobject
+instance {X : C} [simple X] : nontrivial (subobject X) :=
+nontrivial_of_not_is_zero (simple.not_is_zero X)
+instance {X : C} [simple X] : is_simple_order (subobject X) :=
+{ eq_bot_or_eq_top := begin
+  rintro ⟨⟨⟨(Y : C), ⟨⟨⟩⟩, (f : Y ⟶ X)⟩, (m : mono f)⟩⟩, resetI,
+  change mk f = ⊥ ∨ mk f = ⊤,
+  by_cases h : f = 0,
+  { exact or.inl (mk_eq_bot_iff_zero.mpr h), },
+  { refine or.inr ((is_iso_iff_mk_eq_top _).mp ((simple.mono_is_iso_iff_nonzero f).mpr h)), }
+end, }
+lemma simple_of_is_simple_order_subobject (X : C) [is_simple_order (subobject X)] : simple X :=
+begin
+  split, introsI, split,
+  { introI i,
+    rw subobject.is_iso_iff_mk_eq_top at i,
+    intro w,
+    rw ←subobject.mk_eq_bot_iff_zero at w,
+    exact is_simple_order.bot_ne_top (w.symm.trans i), },
+  { intro i,
+    rcases is_simple_order.eq_bot_or_eq_top (subobject.mk f) with h|h,
+    { rw subobject.mk_eq_bot_iff_zero at h,
+      exact false.elim (i h), },
+    { exact (subobject.is_iso_iff_mk_eq_top _).mpr h, }, }
+end
+lemma simple_iff_subobject_is_simple_order (X : C) : simple X ↔ is_simple_order (subobject X) :=
+⟨by { introI h, apply_instance, },
+ by { introI h, exact simple_of_is_simple_order_subobject X, }⟩
+lemma subobject_simple_iff_is_atom {X : C} (Y : subobject X) : simple (Y : C) ↔ is_atom Y :=
+(simple_iff_subobject_is_simple_order _).trans
+  ((order_iso.is_simple_order_iff (subobject_order_iso Y)).trans
+    set.is_simple_order_Iic_iff_is_atom)
+end subobject
+end category_theory

@@ -1,0 +1,12 @@
+import tactic.chain
+import data.quot
+namespace tactic
+private meta def trunc_cases_subsingleton (e : expr) (ids : list name) : tactic expr :=
+do
+private meta def trunc_cases_nondependent (e : expr) (ids : list name) : tactic expr :=
+do
+private meta def trunc_cases_dependent (e : expr) (ids : list name) : tactic expr :=
+do
+meta def trunc_cases (e : parse texpr) (ids : parse with_ident_list) : tactic unit :=
+do
+  e ← to_expr e,

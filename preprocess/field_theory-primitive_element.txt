@@ -1,0 +1,91 @@
+import field_theory.adjoin
+import field_theory.is_alg_closed.basic
+import field_theory.separable
+import ring_theory.integral_domain
+noncomputable theory
+open_locale classical polynomial
+open finite_dimensional polynomial intermediate_field
+namespace field
+section primitive_element_finite
+variables (F : Type*) [field F] (E : Type*) [field E] [algebra F E]
+lemma exists_primitive_element_of_fintype_top [fintype E] : ∃ α : E, F⟮α⟯ = ⊤ :=
+begin
+  obtain ⟨α, hα⟩ := is_cyclic.exists_generator (units E),
+  use α,
+  apply eq_top_iff.mpr,
+  rintros x -,
+  by_cases hx : x = 0,
+  { rw hx,
+    exact F⟮α.val⟯.zero_mem },
+  { obtain ⟨n, hn⟩ := set.mem_range.mp (hα (units.mk0 x hx)),
+    rw (show x = α^n, by { norm_cast, rw [hn, units.coe_mk0] }),
+    exact zpow_mem (mem_adjoin_simple_self F ↑α) n, },
+end
+theorem exists_primitive_element_of_fintype_bot [fintype F] [finite_dimensional F E] :
+  ∃ α : E, F⟮α⟯ = ⊤ :=
+begin
+  haveI : fintype E := fintype_of_fintype F E,
+  exact exists_primitive_element_of_fintype_top F E,
+end
+end primitive_element_finite
+section primitive_element_inf
+variables {F : Type*} [field F] [infinite F] {E : Type*} [field E] (ϕ : F →+* E) (α β : E)
+lemma primitive_element_inf_aux_exists_c (f g : F[X]) :
+  ∃ c : F, ∀ (α' ∈ (f.map ϕ).roots) (β' ∈ (g.map ϕ).roots), -(α' - α)/(β' - β) ≠ ϕ c :=
+begin
+  let sf := (f.map ϕ).roots,
+  let sg := (g.map ϕ).roots,
+  let s := (sf.bind (λ α', sg.map (λ β', -(α' - α) / (β' - β)))).to_finset,
+  let s' := s.preimage ϕ (λ x hx y hy h, ϕ.injective h),
+  obtain ⟨c, hc⟩ := infinite.exists_not_mem_finset s',
+  simp_rw [finset.mem_preimage, multiset.mem_to_finset, multiset.mem_bind, multiset.mem_map] at hc,
+  push_neg at hc,
+  exact ⟨c, hc⟩,
+end
+variables (F) [algebra F E]
+theorem exists_primitive_element : ∃ α : E, F⟮α⟯ = ⊤ :=
+begin
+  rcases is_empty_or_nonempty (fintype F) with F_inf|⟨⟨F_finite⟩⟩,
+  { let P : intermediate_field F E → Prop := λ K, ∃ α : E, F⟮α⟯ = K,
+    have base : P ⊥ := ⟨0, adjoin_zero⟩,
+    have ih : ∀ (K : intermediate_field F E) (x : E), P K → P ↑K⟮x⟯,
+    { intros K β hK,
+      cases hK with α hK,
+      rw [←hK, adjoin_simple_adjoin_simple],
+      haveI : infinite F := is_empty_fintype.mp F_inf,
+      cases primitive_element_inf_aux F α β with γ hγ,
+      exact ⟨γ, hγ.symm⟩ },
+    exact induction_on_adjoin P base ih ⊤ },
+  { exactI exists_primitive_element_of_fintype_bot F E }
+end
+noncomputable def power_basis_of_finite_of_separable : power_basis F E :=
+let α := (exists_primitive_element F E).some,
+    pb := (adjoin.power_basis (is_separable.is_integral F α)) in
+have e : F⟮α⟯ = ⊤ := (exists_primitive_element F E).some_spec,
+pb.map ((intermediate_field.equiv_of_eq e).trans intermediate_field.top_equiv)
+end separable_assumption
+noncomputable def fintype.subtype_prod {E : Type*} {X : set E} (hX : X.finite) {L : Type*}
+  (F : E → multiset L) : fintype (Π x : X, {l : L // l ∈ F x}) :=
+by { classical, letI : fintype X := set.finite.fintype hX, exact pi.fintype}
+variables (K : Type*) [field K] [algebra F K]
+variables (E F)
+noncomputable instance : fintype (E →ₐ[F] K) :=
+let n := finite_dimensional.finrank F E in
+begin
+  let B : basis (fin n) F E := finite_dimensional.fin_basis F E,
+  let X := set.range (B : fin n → E),
+  have hX : X.finite := set.finite_range ⇑B,
+  refine @fintype.of_injective _ _
+    (fintype.subtype_prod hX (λ e, ((minpoly F e).map (algebra_map F K)).roots)) _
+    (aux_inj_roots_of_min_poly F E K),
+end
+end field
+@[simp] lemma alg_hom.card (F E K : Type*) [field F] [field E] [field K] [is_alg_closed K]
+  [algebra F E] [finite_dimensional F E] [is_separable F E] [algebra F K] :
+  fintype.card (E →ₐ[F] K) = finrank F E :=
+begin
+  convert (alg_hom.card_of_power_basis (field.power_basis_of_finite_of_separable F E)
+    (is_separable.separable _ _) (is_alg_closed.splits_codomain _)).trans
+    (power_basis.finrank _).symm,
+  apply_instance,
+end

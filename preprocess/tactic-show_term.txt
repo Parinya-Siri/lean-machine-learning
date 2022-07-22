@@ -1,0 +1,15 @@
+import tactic.core
+open tactic
+namespace tactic.interactive
+meta def show_term (t : itactic) : itactic :=
+do
+  g :: _ ← get_goals,
+  t,
+  g ← tactic_statement g,
+  trace g
+add_tactic_doc
+{ name := "show_term",
+  category := doc_category.tactic,
+  decl_names := [``show_term],
+  tags := ["debugging"] }
+end tactic.interactive

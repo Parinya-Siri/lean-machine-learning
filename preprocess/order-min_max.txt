@@ -1,0 +1,32 @@
+import order.lattice
+universes u v
+variables {α : Type u} {β : Type v}
+attribute [simp] max_eq_left max_eq_right min_eq_left min_eq_right
+section
+variables [linear_order α] [linear_order β] {f : α → β} {s : set α} {a b c d : α}
+lemma min_cases (a b : α) : min a b = a ∧ a ≤ b ∨ min a b = b ∧ b < a :=
+begin
+  by_cases a ≤ b,
+  { left,
+    exact ⟨min_eq_left h, h⟩ },
+  { right,
+    exact ⟨min_eq_right (le_of_lt (not_le.mp h)), (not_le.mp h)⟩ }
+end
+lemma max_cases (a b : α) : max a b = a ∧ b ≤ a ∨ max a b = b ∧ a < b := @min_cases αᵒᵈ _ a b
+lemma min_eq_iff : min a b = c ↔ a = c ∧ a ≤ b ∨ b = c ∧ b ≤ a :=
+begin
+  split,
+  { intro h,
+    refine or.imp (λ h', _) (λ h', _) (le_total a b);
+    exact ⟨by simpa [h'] using h, h'⟩ },
+  { rintro (⟨rfl, h⟩|⟨rfl, h⟩);
+    simp [h] }
+end
+lemma max_eq_iff : max a b = c ↔ a = c ∧ b ≤ a ∨ b = c ∧ a ≤ b := @min_eq_iff αᵒᵈ _ a b c
+lemma min_lt_min_left_iff : min a c < min b c ↔ a < b ∧ a < c :=
+by { simp_rw [lt_min_iff, min_lt_iff, or_iff_left (lt_irrefl _)],
+  exact and_congr_left (λ h, or_iff_left_of_imp h.trans) }
+lemma min_lt_min_right_iff : min a b < min a c ↔ b < c ∧ b < a :=
+by simp_rw [min_comm a, min_lt_min_left_iff]
+lemma max_lt_max_left_iff : max a c < max b c ↔ a < b ∧ c < b := @min_lt_min_left_iff αᵒᵈ _ _ _ _
+lemma max_lt_max_right_iff : max a b < max a c ↔ b < c ∧ a < c := @min_lt_min_right_iff αᵒᵈ _ _ _ _

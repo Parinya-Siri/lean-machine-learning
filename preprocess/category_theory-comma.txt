@@ -1,0 +1,100 @@
+import category_theory.isomorphism
+import category_theory.functor.category
+import category_theory.eq_to_hom
+namespace category_theory
+structure comma (L : A ⥤ T) (R : B ⥤ T) : Type (max u₁ u₂ v₃) :=
+(left : A . obviously)
+(right : B . obviously)
+(hom : L.obj left ⟶ R.obj right)
+@[ext] structure comma_morphism (X Y : comma L R) :=
+(left : X.left ⟶ Y.left . obviously)
+(right : X.right ⟶ Y.right . obviously)
+(w' : L.map left ≫ Y.hom = X.hom ≫ R.map right . obviously)
+@[simps]
+def fst : comma L R ⥤ A :=
+{ obj := λ X, X.left,
+  map := λ _ _ f, f.left }
+@[simps]
+def snd : comma L R ⥤ B :=
+{ obj := λ X, X.right,
+  map := λ _ _ f, f.right }
+@[simps]
+def nat_trans : fst L R ⋙ L ⟶ snd L R ⋙ R :=
+{ app := λ X, X.hom }
+@[simp] lemma eq_to_hom_left (X Y : comma L R) (H : X = Y) :
+  comma_morphism.left (eq_to_hom H) = eq_to_hom (by { cases H, refl }) := by { cases H, refl }
+@[simp] lemma eq_to_hom_right (X Y : comma L R) (H : X = Y) :
+  comma_morphism.right (eq_to_hom H) = eq_to_hom (by { cases H, refl }) := by { cases H, refl }
+section
+variables {L₁ L₂ L₃ : A ⥤ T} {R₁ R₂ R₃ : B ⥤ T}
+@[simps]
+def iso_mk {X Y : comma L₁ R₁} (l : X.left ≅ Y.left) (r : X.right ≅ Y.right)
+  (h : L₁.map l.hom ≫ Y.hom = X.hom ≫ R₁.map r.hom) : X ≅ Y :=
+{ hom := { left := l.hom, right := r.hom },
+  inv :=
+  { left := l.inv,
+    right := r.inv,
+    w' := begin
+      rw [←L₁.map_iso_inv l, iso.inv_comp_eq, L₁.map_iso_hom, reassoc_of h, ← R₁.map_comp],
+      simp
+    end, } }
+@[simps]
+def map_left (l : L₁ ⟶ L₂) : comma L₂ R ⥤ comma L₁ R :=
+{ obj := λ X,
+  { left  := X.left,
+    right := X.right,
+    hom   := l.app X.left ≫ X.hom },
+  map := λ X Y f,
+  { left  := f.left,
+    right := f.right } }
+@[simps]
+def map_left_id : map_left R (𝟙 L) ≅ 𝟭 _ :=
+{ hom :=
+  { app := λ X, { left := 𝟙 _, right := 𝟙 _ } },
+  inv :=
+  { app := λ X, { left := 𝟙 _, right := 𝟙 _ } } }
+@[simps]
+def map_left_comp (l : L₁ ⟶ L₂) (l' : L₂ ⟶ L₃) :
+  (map_left R (l ≫ l')) ≅ (map_left R l') ⋙ (map_left R l) :=
+{ hom :=
+  { app := λ X, { left := 𝟙 _, right := 𝟙 _ } },
+  inv :=
+  { app := λ X, { left := 𝟙 _, right := 𝟙 _ } } }
+@[simps]
+def map_right (r : R₁ ⟶ R₂) : comma L R₁ ⥤ comma L R₂ :=
+{ obj := λ X,
+  { left  := X.left,
+    right := X.right,
+    hom   := X.hom ≫ r.app X.right },
+  map := λ X Y f,
+  { left  := f.left,
+    right := f.right } }
+@[simps]
+def map_right_id : map_right L (𝟙 R) ≅ 𝟭 _ :=
+{ hom :=
+  { app := λ X, { left := 𝟙 _, right := 𝟙 _ } },
+  inv :=
+  { app := λ X, { left := 𝟙 _, right := 𝟙 _ } } }
+@[simps]
+def map_right_comp (r : R₁ ⟶ R₂) (r' : R₂ ⟶ R₃) :
+  (map_right L (r ≫ r')) ≅ (map_right L r) ⋙ (map_right L r') :=
+{ hom :=
+  { app := λ X, { left := 𝟙 _, right := 𝟙 _ } },
+  inv :=
+  { app := λ X, { left := 𝟙 _, right := 𝟙 _ } } }
+end
+section
+variables {C : Type u₄} [category.{v₄} C] {D : Type u₅} [category.{v₅} D]
+@[simps] def pre_left (F: C ⥤ A) (L : A ⥤ T) (R : B ⥤ T) : comma (F ⋙ L) R ⥤ comma L R :=
+{ obj := λ X, { left := F.obj X.left, right := X.right, hom := X.hom },
+  map := λ X Y f, { left := F.map f.left, right := f.right, w' := by simpa using f.w } }
+@[simps] def pre_right (L : A ⥤ T) (F: C ⥤ B) (R : B ⥤ T) : comma L (F ⋙ R) ⥤ comma L R :=
+{ obj := λ X, { left := X.left, right := F.obj X.right, hom := X.hom },
+  map := λ X Y f, { left := f.left, right := F.map f.right, w' := by simp } }
+@[simps] def post (L : A ⥤ T) (R : B ⥤ T) (F: T ⥤ C) : comma L R ⥤ comma (L ⋙ F) (R ⋙ F) :=
+{ obj := λ X, { left := X.left, right := X.right, hom := F.map X.hom },
+  map := λ X Y f, { left := f.left, right := f.right, w' :=
+    by { simp only [functor.comp_map, ←F.map_comp, f.w] } } }
+end
+end comma
+end category_theory

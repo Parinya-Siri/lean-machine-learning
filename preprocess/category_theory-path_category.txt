@@ -1,0 +1,89 @@
+import category_theory.eq_to_hom
+import category_theory.quotient
+import combinatorics.quiver.path
+universes v₁ v₂ u₁ u₂
+namespace category_theory
+section
+def paths (V : Type u₁) : Type u₁ := V
+instance (V : Type u₁) [inhabited V] : inhabited (paths V) := ⟨(default : V)⟩
+variables (V : Type u₁) [quiver.{v₁+1} V]
+namespace paths
+instance category_paths : category.{max u₁ v₁} (paths V) :=
+{ hom := λ (X Y : V), quiver.path X Y,
+  id := λ X, quiver.path.nil,
+  comp := λ X Y Z f g, quiver.path.comp f g, }
+variables {V}
+@[simps]
+def of : prefunctor V (paths V) :=
+{ obj := λ X, X,
+  map := λ X Y f, f.to_path, }
+local attribute [ext] functor.ext
+@[ext]
+lemma ext_functor {C} [category C]
+  {F G : paths V ⥤ C}
+  (h_obj : F.obj = G.obj)
+  (h : ∀ (a b : V) (e : a ⟶ b), F.map e.to_path =
+  eq_to_hom (congr_fun h_obj a) ≫ G.map e.to_path ≫ eq_to_hom (congr_fun h_obj.symm b)) :
+  F = G :=
+begin
+  ext X Y f,
+  { induction f with Y' Z' g e ih,
+    { erw [F.map_id, G.map_id, category.id_comp, eq_to_hom_trans, eq_to_hom_refl], },
+    { erw [F.map_comp g e.to_path, G.map_comp g e.to_path, ih, h],
+      simp only [category.id_comp, eq_to_hom_refl, eq_to_hom_trans_assoc, category.assoc], }, },
+  { intro X, rw h_obj, }
+end
+end paths
+variables (W : Type u₂) [quiver.{v₂+1} W]
+@[simp]
+def compose_path {X : C} : Π {Y : C} (p : path X Y), X ⟶ Y
+| _ path.nil := 𝟙 X
+| _ (path.cons p e) := compose_path p ≫ e
+@[simp]
+lemma compose_path_to_path {X Y : C} (f : X ⟶ Y) : compose_path (f.to_path) = f :=
+category.id_comp _
+@[simp]
+lemma compose_path_comp {X Y Z : C} (f : path X Y) (g : path Y Z) :
+  compose_path (f.comp g) = compose_path f ≫ compose_path g :=
+begin
+  induction g with Y' Z' g e ih,
+  { simp, },
+  { simp [ih], },
+end
+@[simp]
+lemma compose_path_id {X : paths C} : compose_path (𝟙 X) = 𝟙 X := rfl
+@[simp]
+lemma compose_path_comp' {X Y Z : paths C} (f : X ⟶ Y) (g : Y ⟶ Z) :
+  compose_path (f ≫ g) = compose_path f ≫ compose_path g :=
+compose_path_comp f g
+variables (C)
+@[simps]
+def path_composition : paths C ⥤ C :=
+{ obj := λ X, X,
+  map := λ X Y f, compose_path f, }
+@[simps]
+def to_quotient_paths : C ⥤ quotient (paths_hom_rel C) :=
+{ obj := λ X, quotient.mk X,
+  map := λ X Y f, quot.mk _ f.to_path,
+  map_id' := λ X, quot.sound (quotient.comp_closure.of _ _ _ (by simp)),
+  map_comp' := λ X Y Z f g, quot.sound (quotient.comp_closure.of _ _ _ (by simp)), }
+@[simps]
+def quotient_paths_to : quotient (paths_hom_rel C) ⥤ C :=
+quotient.lift _ (path_composition C) (λ X Y p q w, w)
+def quotient_paths_equiv : quotient (paths_hom_rel C) ≌ C :=
+{ functor := quotient_paths_to C,
+  inverse := to_quotient_paths C,
+  unit_iso := nat_iso.of_components (λ X, by { cases X, refl, }) begin
+    intros,
+    cases X, cases Y,
+    induction f,
+    dsimp,
+    simp only [category.comp_id, category.id_comp],
+    apply quot.sound,
+    apply quotient.comp_closure.of,
+    simp [paths_hom_rel],
+  end,
+  counit_iso := nat_iso.of_components (λ X, iso.refl _) (by tidy),
+  functor_unit_iso_comp' := by { intros, cases X, dsimp, simp, refl, }, }
+end
+end category_theory

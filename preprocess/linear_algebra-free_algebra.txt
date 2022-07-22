@@ -1,0 +1,10 @@
+import linear_algebra.basis
+import algebra.free_algebra
+import linear_algebra.finsupp_vector_space
+universes u v
+namespace free_algebra
+@[simps]
+noncomputable def basis_free_monoid (R : Type u) (X : Type v) [comm_ring R] :
+  basis (free_monoid X) R (free_algebra R X) :=
+finsupp.basis_single_one.map
+  (equiv_monoid_algebra_free_monoid.symm.to_linear_equiv : _ ≃ₗ[R] free_algebra R X)

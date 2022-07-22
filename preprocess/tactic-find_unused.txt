@@ -1,0 +1,40 @@
+import data.bool.basic
+import meta.rb_map
+import tactic.core
+namespace tactic
+@[user_attribute]
+meta def main_declaration_attr : user_attribute :=
+{ name := `main_declaration,
+  descr := "tag essential declarations to help identify unused definitions" }
+private meta def update_unsed_decls_list :
+  name → name_map declaration → tactic (name_map declaration)
+| n m :=
+  do d ← get_decl n,
+     if m.contains n then do
+       let m := m.erase n,
+       let ns := d.value.list_constant.union d.type.list_constant,
+       ns.mfold m update_unsed_decls_list
+     else pure m
+meta def all_unused (fs : list (option string)) : tactic (name_map declaration) :=
+do ds ← get_decls_from fs,
+   ls ← ds.keys.mfilter (succeeds ∘ user_attribute.get_param_untyped main_declaration_attr),
+   ds ← ls.mfoldl (flip update_unsed_decls_list) ds,
+   ds.mfilter $ λ n d, do
+     e ← get_env,
+     return $ !d.is_auto_or_internal e
+meta def parse_file_name (fn : pexpr) : tactic (option string) :=
+some <$> (to_expr fn >>= eval_expr string) <|> fail "expecting: \"src/dir/file-name\""
+setup_tactic_parser
+@[user_command]
+meta def unused_decls_cmd (_ : parse $ tk "#list_unused_decls") : lean.parser unit :=
+do fs ← pexpr_list,
+   show tactic unit, from
+   do fs ← fs.mmap parse_file_name,
+      ds ← all_unused $ none :: fs,
+      ds.to_list.mmap' $ λ ⟨n,_⟩, trace!"#print {n}"
+add_tactic_doc
+{ name                     := "#list_unused_decls",
+  category                 := doc_category.cmd,
+  decl_names               := [`tactic.unused_decls_cmd],
+  tags                     := ["debugging"] }
+end tactic

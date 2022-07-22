@@ -1,0 +1,122 @@
+import tactic.fin_cases
+open set
+namespace tactic
+namespace interval_cases
+meta def gives_lower_bound (n e : expr) : tactic expr :=
+do t ← infer_type e,
+   match t with
+   | `(%%n' ≥ %%b) := do guard (n = n'), b ← b.to_rat, return e
+   | `(%%b ≤ %%n') := do guard (n = n'), b ← b.to_rat, return e
+   | `(%%n' > %%b) := do
+      guard (n = n'),
+      b ← b.to_rat,
+      tn ← infer_type n,
+      match tn with
+      | `(ℕ) := to_expr ``(nat.add_one_le_iff.mpr %%e)
+      | `(ℕ+) := to_expr ``(pnat.add_one_le_iff.mpr %%e)
+      | `(ℤ) := to_expr ``(int.add_one_le_iff.mpr %%e)
+      | _ := failed
+      end
+   | `(%%b < %%n') := do
+      guard (n = n'),
+      b ← b.to_rat,
+      tn ← infer_type n,
+      match tn with
+      | `(ℕ) := to_expr ``(nat.add_one_le_iff.mpr %%e)
+      | `(ℕ+) := to_expr ``(pnat.add_one_le_iff.mpr %%e)
+      | `(ℤ) := to_expr ``(int.add_one_le_iff.mpr %%e)
+      | _ := failed
+      end
+   | _ := failed
+   end
+meta def combine_upper_bounds : option expr → option expr → tactic (option expr)
+| none none := return none
+| (some prf) none := return $ some prf
+| none (some prf) := return $ some prf
+| (some prf₁) (some prf₂) :=
+  do option.some <$> to_expr ``(lt_min %%prf₁ %%prf₂)
+meta def combine_lower_bounds : option expr → option expr → tactic (option expr)
+| none none := return $ none
+| (some prf) none := return $ some prf
+| none (some prf) := return $ some prf
+| (some prf₁) (some prf₂) :=
+  do option.some <$> to_expr ``(max_le %%prf₂ %%prf₁)
+meta def update_bounds (n : expr) (bounds : option expr × option expr) (e : expr) :
+  tactic (option expr × option expr) :=
+do nlb ← try_core $ gives_lower_bound n e,
+   nub ← try_core $ gives_upper_bound n e,
+   clb ← combine_lower_bounds bounds.1 nlb,
+   cub ← combine_upper_bounds bounds.2 nub,
+   return (clb, cub)
+meta def initial_lower_bound (n : expr) : tactic expr :=
+do e ← to_expr ``(@bot_le _ _ _ %%n),
+   t ← infer_type e,
+   match t with
+   | `(%%b ≤ %%n) := do return e
+   | _ := failed
+   end
+meta def initial_upper_bound (n : expr) : tactic expr :=
+do e ← to_expr ``(@le_top _ _ _ %%n),
+   match e with
+   | `(%%n ≤ %%b) := do
+     tn ← infer_type n,
+     e ← match tn with
+     | `(ℕ) := to_expr ``(nat.add_one_le_iff.mpr %%e)
+     | `(ℕ+) := to_expr ``(pnat.add_one_le_iff.mpr %%e)
+     | `(ℤ) := to_expr ``(int.add_one_le_iff.mpr %%e)
+     | _ := failed
+     end,
+     return e
+   | _ := failed
+   end
+meta def get_bounds (n : expr) : tactic (expr × expr) :=
+do
+  hl ← try_core (initial_lower_bound n),
+  hu ← try_core (initial_upper_bound n),
+  lc ← local_context,
+  r ← lc.mfoldl (update_bounds n) (hl, hu),
+  match r with
+  | (_, none) := fail "No upper bound located."
+  | (none, _) := fail "No lower bound located."
+  | (some lb_prf, some ub_prf) := return (lb_prf, ub_prf)
+  end
+def set_elems {α} [decidable_eq α] (s : set α) [fintype s] : finset α :=
+(fintype.elems s).image subtype.val
+lemma mem_set_elems {α} [decidable_eq α] (s : set α) [fintype s] {a : α} (h : a ∈ s) :
+  a ∈ set_elems s :=
+finset.mem_image.2 ⟨⟨a, h⟩, fintype.complete _, rfl⟩
+end interval_cases
+open interval_cases
+meta def interval_cases_using (hl hu : expr) (n : option name) : tactic unit :=
+to_expr ``(mem_set_elems (Ico _ _) ⟨%%hl, %%hu⟩) >>=
+(if hn : n.is_some then
+  note (option.get hn)
+else
+  note_anon none) >>= fin_cases_at none none
+setup_tactic_parser
+namespace interactive
+local postfix `?`:9001 := optional
+meta def interval_cases (n : parse texpr?)
+  (bounds : parse (tk "using" *> (prod.mk <$> ident <*> ident))?)
+  (lname : parse (tk "with" *> ident)?) :
+  tactic unit :=
+do
+  if h : n.is_some then (do
+    guard bounds.is_none <|>
+      fail "Do not use the `using` keyword if specifying the variable explicitly.",
+    n ← to_expr (option.get h),
+    (hl, hu) ← get_bounds n,
+    tactic.interval_cases_using hl hu lname)
+  else if h' : bounds.is_some then (do
+    [hl, hu] ← [(option.get h').1, (option.get h').2].mmap get_local,
+    tactic.interval_cases_using hl hu lname)
+  else
+    fail ("Call `interval_cases n` (specifying a variable), or `interval_cases lb ub`\n" ++
+      "(specifying a lower bound and upper bound on the same variable).")
+add_tactic_doc
+{ name       := "interval_cases",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.interval_cases],
+  tags       := ["case bashing"] }
+end interactive
+end tactic

@@ -1,0 +1,272 @@
+import meta.rb_map
+import tactic.core
+open native
+open expr_set (local_set_to_name_set)
+open name_set (local_list_to_name_set)
+namespace tactic
+meta def type_has_local_in_name_set (h : expr) (ns : name_set) : tactic bool := do
+  h_type ← infer_type h,
+  pure $ h_type.has_local_in ns
+meta def type_has_local_in_set (h : expr) (hs : expr_set) : tactic bool :=
+type_has_local_in_name_set h $ local_set_to_name_set hs
+meta def type_has_local_in (h : expr) (hs : list expr) : tactic bool :=
+type_has_local_in_name_set h $ local_list_to_name_set hs
+meta def local_def_value_has_local_in_name_set (h : expr) (ns : name_set) :
+  tactic bool := do
+  (some h_val) ← try_core $ local_def_value h | pure ff,
+  pure $ h_val.has_local_in ns
+meta def local_def_value_has_local_in_set (h : expr) (hs : expr_set) :
+  tactic bool :=
+local_def_value_has_local_in_name_set h $ local_set_to_name_set hs
+meta def local_def_value_has_local_in (h : expr) (hs : list expr) :
+  tactic bool :=
+local_def_value_has_local_in_name_set h $ local_list_to_name_set hs
+meta def hyp_directly_depends_on_local_name_set (h : expr) (ns : name_set) :
+  tactic bool :=
+list.mbor
+  [ type_has_local_in_name_set h ns,
+    local_def_value_has_local_in_name_set h ns ]
+meta def hyp_directly_depends_on_local_set (h : expr) (hs : expr_set) :
+  tactic bool :=
+hyp_directly_depends_on_local_name_set h $ local_set_to_name_set hs
+meta def hyp_directly_depends_on_locals (h : expr) (hs : list expr) :
+  tactic bool :=
+hyp_directly_depends_on_local_name_set h $ local_list_to_name_set hs
+meta def hyp_directly_depends_on_local_name_set_inclusive (h : expr)
+  (ns : name_set) : tactic bool :=
+list.mbor
+  [ pure $ ns.contains h.local_uniq_name
+  , hyp_directly_depends_on_local_name_set h ns ]
+meta def hyp_directly_depends_on_local_set_inclusive (h : expr) (hs : expr_set) :
+  tactic bool :=
+hyp_directly_depends_on_local_name_set_inclusive h $ local_set_to_name_set hs
+meta def hyp_directly_depends_on_locals_inclusive (h : expr) (hs : list expr) :
+  tactic bool :=
+hyp_directly_depends_on_local_name_set_inclusive h $ local_list_to_name_set hs
+meta def direct_dependency_set_of_hyp (h : expr) : tactic expr_set := do
+  t ← infer_type h,
+  let deps := t.list_local_consts',
+  (some val) ← try_core $ local_def_value h | pure deps,
+  let deps := deps.union val.list_local_consts',
+  pure deps
+meta def direct_dependency_name_set_of_hyp (h : expr) : tactic name_set :=
+local_set_to_name_set <$> direct_dependency_set_of_hyp h
+meta def direct_dependencies_of_hyp (h : expr) : tactic (list expr) :=
+rb_set.to_list <$> direct_dependency_set_of_hyp h
+meta def direct_dependency_set_of_hyp_inclusive (h : expr) : tactic expr_set := do
+  deps ← direct_dependency_set_of_hyp h,
+  pure $ deps.insert h
+meta def direct_dependency_name_set_of_hyp_inclusive (h : expr) :
+  tactic name_set :=
+local_set_to_name_set <$> direct_dependency_set_of_hyp_inclusive h
+meta def direct_dependencies_of_hyp_inclusive (h : expr) : tactic (list expr) :=
+rb_set.to_list <$> direct_dependency_set_of_hyp_inclusive h
+meta def hyp_depends_on_local_name_set' : expr_set → expr → name_set →
+  tactic (bool × expr_set) := λ cache h ns, do
+  ff ← pure $ cache.contains h | pure (ff, cache),
+  direct_deps ← direct_dependency_set_of_hyp h,
+  let has_dep := direct_deps.fold ff (λ d b, b || ns.contains d.local_uniq_name),
+  ff ← pure has_dep | pure (tt, cache),
+  (has_dep, cache) ← direct_deps.mfold (ff, cache) $ λ d ⟨b, cache⟩,
+    if b
+      then pure (tt, cache)
+      else hyp_depends_on_local_name_set' cache d ns,
+  if has_dep
+    then pure (tt, cache)
+    else pure (ff, cache.insert h)
+meta def hyp_depends_on_local_name_set (h : expr) (ns : name_set) : tactic bool := do
+  ctx_has_local_def ← context_upto_hyp_has_local_def h,
+  if ctx_has_local_def
+    then prod.fst <$> hyp_depends_on_local_name_set' mk_expr_set h ns
+    else hyp_directly_depends_on_local_name_set h ns
+meta def hyp_depends_on_local_set (h : expr) (hs : expr_set) : tactic bool :=
+hyp_depends_on_local_name_set h $ local_set_to_name_set hs
+meta def hyp_depends_on_locals (h : expr) (hs : list expr) : tactic bool :=
+hyp_depends_on_local_name_set h $ local_list_to_name_set hs
+meta def hyps_depend_on_local_name_set (hs : list expr) (ns : name_set) :
+  tactic (list bool) := do
+  ctx_has_local ← context_has_local_def,
+  if ctx_has_local
+    then
+      let go : expr → list bool × expr_set → tactic (list bool × expr_set) :=
+      λ h ⟨deps, cache⟩, do
+      { (h_dep, cache) ← hyp_depends_on_local_name_set' cache h ns,
+        pure (h_dep :: deps, cache) }
+      in
+      prod.fst <$> hs.mfoldr go ([], mk_expr_map)
+    else hs.mmap $ λ h, hyp_directly_depends_on_local_name_set h ns
+meta def hyps_depend_on_local_set (hs : list expr) (is : expr_set) :
+  tactic (list bool) :=
+hyps_depend_on_local_name_set hs $ local_set_to_name_set is
+meta def hyps_depend_on_locals (hs is : list expr) : tactic (list bool) :=
+hyps_depend_on_local_name_set hs $ local_list_to_name_set is
+meta def hyp_depends_on_local_name_set_inclusive' (cache : expr_set) (h : expr)
+  (ns : name_set) : tactic (bool × expr_set) :=
+if ns.contains h.local_uniq_name
+  then pure (tt, cache)
+  else hyp_depends_on_local_name_set' cache h ns
+meta def hyp_depends_on_local_name_set_inclusive (h : expr) (ns : name_set) :
+  tactic bool :=
+list.mbor
+  [ pure $ ns.contains h.local_uniq_name,
+    hyp_depends_on_local_name_set h ns ]
+meta def hyp_depends_on_local_set_inclusive (h : expr) (hs : expr_set) :
+  tactic bool :=
+hyp_depends_on_local_name_set_inclusive h $ local_set_to_name_set hs
+meta def hyp_depends_on_locals_inclusive (h : expr) (hs : list expr) :
+  tactic bool :=
+hyp_depends_on_local_name_set_inclusive h $ local_list_to_name_set hs
+meta def hyps_depend_on_local_name_set_inclusive (hs : list expr) (ns : name_set) :
+  tactic (list bool) := do
+  ctx_has_local ← context_has_local_def,
+  if ctx_has_local
+    then
+      let go : expr → list bool × expr_set → tactic (list bool × expr_set) :=
+      λ h ⟨deps, cache⟩, do
+      { (h_dep, cache) ← hyp_depends_on_local_name_set_inclusive' cache h ns,
+        pure (h_dep :: deps, cache) }
+      in
+      prod.fst <$> hs.mfoldr go ([], mk_expr_map)
+    else
+      hs.mmap $ λ h, hyp_directly_depends_on_local_name_set_inclusive h ns
+meta def hyps_depend_on_local_set_inclusive (hs : list expr) (is : expr_set) :
+  tactic (list bool) :=
+hyps_depend_on_local_name_set_inclusive hs $ local_set_to_name_set is
+meta def hyps_depend_on_locals_inclusive (hs is : list expr) : tactic (list bool) :=
+hyps_depend_on_local_name_set_inclusive hs $ local_list_to_name_set is
+meta def dependency_set_of_hyp' : expr_map expr_set → expr →
+  tactic (expr_set × expr_map expr_set) := λ cache h, do
+  match cache.find h with
+  | some deps := pure (deps, cache)
+  | none := do
+    direct_deps ← direct_dependency_set_of_hyp h,
+    (deps, cache) ←
+      direct_deps.mfold (direct_deps, cache) $ λ h' ⟨deps, cache⟩, do
+      { (deps', cache) ← dependency_set_of_hyp' cache h',
+        pure (deps.union deps', cache) },
+    pure (deps, cache.insert h deps)
+  end
+meta def dependency_set_of_hyp (h : expr) : tactic expr_set := do
+  ctx_has_local ← context_upto_hyp_has_local_def h,
+  if ctx_has_local
+    then prod.fst <$> dependency_set_of_hyp' mk_expr_map h
+    else direct_dependency_set_of_hyp h
+meta def dependency_name_set_of_hyp (h : expr) : tactic name_set :=
+local_set_to_name_set <$> dependency_set_of_hyp h
+meta def dependencies_of_hyp (h : expr) : tactic (list expr) :=
+rb_set.to_list <$> dependency_set_of_hyp h
+meta def dependency_sets_of_hyps (hs : list expr) : tactic (list expr_set) := do
+  ctx_has_def ← context_has_local_def,
+  if ctx_has_def
+    then
+      let go : expr → list expr_set × expr_map expr_set →
+        tactic (list expr_set × expr_map expr_set) := do
+      λ h ⟨deps, cache⟩, do
+        { (h_deps, cache) ← dependency_set_of_hyp' cache h,
+          pure (h_deps :: deps, cache) }
+      in
+      prod.fst <$> hs.mfoldr go ([], mk_expr_map)
+    else
+      hs.mmap direct_dependency_set_of_hyp
+meta def dependency_name_sets_of_hyps (hs : list expr) : tactic (list name_set) :=
+list.map local_set_to_name_set <$> dependency_sets_of_hyps hs
+meta def dependencies_of_hyps (hs : list expr) : tactic (list (list expr)) :=
+list.map rb_set.to_list <$> dependency_sets_of_hyps hs
+meta def dependency_set_of_hyp_inclusive' (cache : expr_map expr_set) (h : expr) :
+  tactic (expr_set × expr_map expr_set) := do
+  (deps, cache) ← dependency_set_of_hyp' cache h,
+  pure (deps.insert h, cache)
+meta def dependency_set_of_hyp_inclusive (h : expr) : tactic expr_set := do
+  deps ← dependency_set_of_hyp h,
+  pure $ deps.insert h
+meta def dependency_name_set_of_hyp_inclusive (h : expr) : tactic name_set :=
+local_set_to_name_set <$> dependency_set_of_hyp_inclusive h
+meta def dependencies_of_hyp_inclusive (h : expr) : tactic (list expr) :=
+rb_set.to_list <$> dependency_set_of_hyp_inclusive h
+meta def dependency_sets_of_hyps_inclusive (hs : list expr) :
+  tactic (list expr_set) := do
+  ctx_has_def ← context_has_local_def,
+  if ctx_has_def
+    then
+      let go : expr → list expr_set × expr_map expr_set →
+        tactic (list expr_set × expr_map expr_set) :=
+      λ h ⟨deps, cache⟩, do
+      { (h_deps, cache) ← dependency_set_of_hyp_inclusive' cache h,
+        pure (h_deps :: deps, cache) }
+      in
+      prod.fst <$> hs.mfoldr go ([], mk_expr_map)
+    else
+      hs.mmap direct_dependency_set_of_hyp_inclusive
+meta def dependency_name_sets_of_hyps_inclusive (hs : list expr) :
+  tactic (list name_set) :=
+list.map local_set_to_name_set <$> dependency_sets_of_hyps_inclusive hs
+meta def dependencies_of_hyps_inclusive (hs : list expr) :
+  tactic (list (list expr)) :=
+list.map rb_set.to_list <$> dependency_sets_of_hyps_inclusive hs
+private meta def reverse_dependencies_of_hyp_name_set_aux (hs : name_set) :
+  list expr → list expr → name_set → tactic (list expr)
+| [] revdeps _ := pure revdeps.reverse
+| (H :: Hs) revdeps ns := do
+  let H_uname := H.local_uniq_name,
+  H_is_revdep ← list.mband
+    [ pure $ ¬ hs.contains H_uname,
+      hyp_directly_depends_on_local_name_set H ns ],
+  if H_is_revdep
+    then
+      reverse_dependencies_of_hyp_name_set_aux Hs (H :: revdeps)
+        (ns.insert H_uname)
+    else
+      reverse_dependencies_of_hyp_name_set_aux Hs revdeps ns
+meta def reverse_dependencies_of_hyp_name_set (hs : name_set) :
+  tactic (list expr) := do
+  ctx ← local_context,
+  let ctx := ctx.after (λ h, hs.contains h.local_uniq_name),
+  reverse_dependencies_of_hyp_name_set_aux hs ctx [] hs
+meta def reverse_dependencies_of_hyp_set (hs : expr_set) : tactic (list expr) :=
+reverse_dependencies_of_hyp_name_set $ local_set_to_name_set hs
+meta def reverse_dependencies_of_hyps (hs : list expr) : tactic (list expr) :=
+reverse_dependencies_of_hyp_name_set $ local_list_to_name_set hs
+private meta def reverse_dependencies_of_hyp_name_set_inclusive_aux :
+  list expr → list expr → name_set → tactic (list expr)
+| [] revdeps _ := pure revdeps.reverse
+| (H :: Hs) revdeps ns := do
+  let H_uname := H.local_uniq_name,
+  H_is_revdep ← list.mbor
+    [ pure $ ns.contains H.local_uniq_name,
+      hyp_directly_depends_on_local_name_set H ns ],
+  if H_is_revdep
+    then
+      reverse_dependencies_of_hyp_name_set_inclusive_aux Hs (H :: revdeps)
+        (ns.insert H_uname)
+    else
+      reverse_dependencies_of_hyp_name_set_inclusive_aux Hs revdeps ns
+meta def reverse_dependencies_of_hyp_name_set_inclusive (hs : name_set) :
+  tactic (list expr) := do
+  ctx ← local_context,
+  let ctx := ctx.drop_while (λ h, ¬ hs.contains h.local_uniq_name),
+  reverse_dependencies_of_hyp_name_set_inclusive_aux ctx [] hs
+meta def reverse_dependencies_of_hyp_set_inclusive (hs : expr_set) :
+  tactic (list expr) :=
+reverse_dependencies_of_hyp_name_set_inclusive $ local_set_to_name_set hs
+meta def reverse_dependencies_of_hyps_inclusive (hs : list expr) :
+  tactic (list expr) :=
+reverse_dependencies_of_hyp_name_set_inclusive $ local_list_to_name_set hs
+meta def revert_name_set (hs : name_set) : tactic (ℕ × list expr) := do
+  to_revert ← reverse_dependencies_of_hyp_name_set_inclusive hs,
+  to_revert_with_types ← to_revert.mmap update_type,
+  num_reverted ← revert_lst to_revert,
+  pure (num_reverted, to_revert_with_types)
+meta def revert_set (hs : expr_set) : tactic (ℕ × list expr) :=
+revert_name_set $ local_set_to_name_set hs
+meta def revert_lst' (hs : list expr) : tactic (ℕ × list expr) :=
+revert_name_set $ local_list_to_name_set hs
+meta def revert_reverse_dependencies_of_hyp (h : expr) : tactic ℕ :=
+reverse_dependencies_of_hyp_name_set (mk_name_set.insert h.local_uniq_name) >>=
+  revert_lst
+meta def revert_reverse_dependencies_of_hyp_name_set (hs : name_set) : tactic ℕ :=
+reverse_dependencies_of_hyp_name_set hs >>= revert_lst
+meta def revert_reverse_dependencies_of_hyp_set (hs : expr_set) : tactic ℕ :=
+reverse_dependencies_of_hyp_set hs >>= revert_lst
+meta def revert_reverse_dependencies_of_hyps (hs : list expr) : tactic ℕ :=
+reverse_dependencies_of_hyps hs >>= revert_lst
+end tactic

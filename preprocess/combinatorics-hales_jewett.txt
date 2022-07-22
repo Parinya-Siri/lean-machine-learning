@@ -1,0 +1,104 @@
+import data.fintype.basic
+import algebra.big_operators.basic
+open_locale classical
+open_locale big_operators
+universes u v
+namespace combinatorics
+structure line (α ι : Type*) :=
+(idx_fun : ι → option α)
+(proper : ∃ i, idx_fun i = none)
+namespace line
+instance (α ι) : has_coe_to_fun (line α ι) (λ _, α → ι → α) :=
+⟨λ l x i, (l.idx_fun i).get_or_else x⟩
+def is_mono {α ι κ} (C : (ι → α) → κ) (l : line α ι) : Prop :=
+∃ c, ∀ x, C (l x) = c
+def diagonal (α ι) [nonempty ι] : line α ι :=
+{ idx_fun := λ _, none,
+  proper  := ⟨classical.arbitrary ι, rfl⟩ }
+instance (α ι) [nonempty ι] : inhabited (line α ι) := ⟨diagonal α ι⟩
+structure almost_mono {α ι κ : Type*} (C : (ι → option α) → κ) :=
+(line : line (option α) ι)
+(color : κ)
+(has_color : ∀ x : α, C (line (some x)) = color)
+instance {α ι κ : Type*} [nonempty ι] [inhabited κ] :
+  inhabited (almost_mono (λ v : ι → option α, (default : κ))) :=
+⟨{ line      := default,
+   color     := default,
+   has_color := λ _, rfl }⟩
+structure color_focused {α ι κ : Type*} (C : (ι → option α) → κ) :=
+(lines : multiset (almost_mono C))
+(focus : ι → option α)
+(is_focused : ∀ p ∈ lines, almost_mono.line p none = focus)
+(distinct_colors : (lines.map almost_mono.color).nodup)
+instance {α ι κ} (C : (ι → option α) → κ) : inhabited (color_focused C) :=
+⟨⟨0, λ _, none, λ _, false.elim, multiset.nodup_zero⟩⟩
+def map {α α' ι} (f : α → α') (l : line α ι) : line α' ι :=
+{ idx_fun := λ i, (l.idx_fun i).map f,
+  proper  := ⟨l.proper.some, by rw [l.proper.some_spec, option.map_none'] ⟩ }
+def vertical {α ι ι'} (v : ι → α) (l : line α ι') : line α (ι ⊕ ι') :=
+{ idx_fun := sum.elim (some ∘ v) l.idx_fun,
+  proper  := ⟨sum.inr l.proper.some, l.proper.some_spec⟩ }
+def horizontal {α ι ι'} (l : line α ι) (v : ι' → α) : line α (ι ⊕ ι') :=
+{ idx_fun := sum.elim l.idx_fun (some ∘ v),
+  proper  := ⟨sum.inl l.proper.some, l.proper.some_spec⟩ }
+def prod {α ι ι'} (l : line α ι) (l' : line α ι') : line α (ι ⊕ ι') :=
+{ idx_fun := sum.elim l.idx_fun l'.idx_fun,
+  proper  := ⟨sum.inl l.proper.some, l.proper.some_spec⟩ }
+lemma apply {α ι} (l : line α ι) (x : α) : l x = λ i, (l.idx_fun i).get_or_else x := rfl
+lemma apply_none {α ι} (l : line α ι) (x : α) (i : ι) (h : l.idx_fun i = none) : l x i = x :=
+by simp only [option.get_or_else_none, h, l.apply]
+lemma apply_of_ne_none {α ι} (l : line α ι) (x : α) (i : ι) (h : l.idx_fun i ≠ none) :
+  some (l x i) = l.idx_fun i :=
+by rw [l.apply, option.get_or_else_of_ne_none h]
+@[simp] lemma map_apply {α α' ι} (f : α → α') (l : line α ι) (x : α) :
+  l.map f (f x) = f ∘ l x :=
+by simp only [line.apply, line.map, option.get_or_else_map]
+@[simp] lemma vertical_apply {α ι ι'} (v : ι → α) (l : line α ι') (x : α) :
+  l.vertical v x = sum.elim v (l x) :=
+by { funext i, cases i; refl }
+@[simp] lemma horizontal_apply {α ι ι'} (l : line α ι) (v : ι' → α) (x : α) :
+  l.horizontal v x = sum.elim (l x) v :=
+by { funext i, cases i; refl }
+@[simp] lemma prod_apply {α ι ι'} (l : line α ι) (l' : line α ι') (x : α) :
+  l.prod l' x = sum.elim (l x) (l' x) :=
+by { funext i, cases i; refl }
+@[simp] lemma diagonal_apply {α ι} [nonempty ι] (x : α) :
+  line.diagonal α ι x = λ i, x :=
+by simp_rw [line.apply, line.diagonal, option.get_or_else_none]
+private theorem exists_mono_in_high_dimension' :
+  ∀ (α : Type u) [fintype α] (κ : Type (max v u)) [fintype κ],
+  ∃ (ι : Type) (_ : fintype ι), ∀ C : (ι → α) → κ, ∃ l : line α ι, l.is_mono C :=
+theorem exists_mono_in_high_dimension (α : Type u) [fintype α] (κ : Type v) [fintype κ] :
+  ∃ (ι : Type) [fintype ι], ∀ C : (ι → α) → κ, ∃ l : line α ι, l.is_mono C :=
+let ⟨ι, ιfin, hι⟩ := exists_mono_in_high_dimension' α (ulift κ)
+in ⟨ι, ιfin, λ C, let ⟨l, c, hc⟩ := hι (ulift.up ∘ C) in ⟨l, c.down, λ x, by rw ←hc⟩ ⟩
+end line
+theorem exists_mono_homothetic_copy
+  {M κ} [add_comm_monoid M] (S : finset M) [fintype κ] (C : M → κ) :
+  ∃ (a > 0) (b : M) (c : κ), ∀ s ∈ S, C (a • s + b) = c :=
+begin
+  obtain ⟨ι, _inst, hι⟩ := line.exists_mono_in_high_dimension S κ,
+  resetI,
+  specialize hι (λ v, C $ ∑ i, v i),
+  obtain ⟨l, c, hl⟩ := hι,
+  set s : finset ι := { i ∈ finset.univ | l.idx_fun i = none } with hs,
+  refine ⟨s.card, finset.card_pos.mpr ⟨l.proper.some, _⟩,
+    ∑ i in sᶜ, ((l.idx_fun i).map coe).get_or_else 0, c, _⟩,
+  { rw [hs, finset.sep_def, finset.mem_filter], exact ⟨finset.mem_univ _, l.proper.some_spec⟩, },
+  intros x xs,
+  rw ←hl ⟨x, xs⟩,
+  clear hl, congr,
+  rw ←finset.sum_add_sum_compl s,
+  congr' 1,
+  { rw ←finset.sum_const,
+    apply finset.sum_congr rfl,
+    intros i hi,
+    rw [hs, finset.sep_def, finset.mem_filter] at hi,
+    rw [l.apply_none _ _ hi.right, subtype.coe_mk], },
+  { apply finset.sum_congr rfl,
+    intros i hi,
+    rw [hs, finset.sep_def, finset.compl_filter, finset.mem_filter] at hi,
+    obtain ⟨y, hy⟩ := option.ne_none_iff_exists.mp hi.right,
+    simp_rw [line.apply, ←hy, option.map_some', option.get_or_else_some], },
+end
+end combinatorics

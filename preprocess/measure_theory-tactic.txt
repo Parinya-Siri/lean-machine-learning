@@ -1,0 +1,89 @@
+import measure_theory.measure.measure_space_def
+import tactic.auto_cases
+import tactic.tidy
+import tactic.with_local_reducibility
+@[user_attribute]
+meta def measurability : user_attribute :=
+{ name := `measurability,
+  descr := "lemmas usable to prove (ae)-measurability" }
+attribute [measurability]
+  measurable_id
+  measurable_id'
+  ae_measurable_id
+  ae_measurable_id'
+  measurable_const
+  ae_measurable_const
+  ae_measurable.measurable_mk
+  measurable_set.empty
+  measurable_set.univ
+  measurable_set.compl
+  subsingleton.measurable_set
+  measurable_set.Union
+  measurable_set.Inter
+  measurable_set.Union_Prop
+  measurable_set.Inter_Prop
+  measurable_set.union
+  measurable_set.inter
+  measurable_set.diff
+  measurable_set.symm_diff
+  measurable_set.ite
+  measurable_set.cond
+  measurable_set.disjointed
+  measurable_set.const
+  measurable_set.insert
+  measurable_set_eq
+  set.finite.measurable_set
+  finset.measurable_set
+  set.countable.measurable_set
+  measurable_space.measurable_set_top
+namespace tactic
+meta def apply_measurable.comp : tactic unit :=
+`[fail_if_success { exact measurable_const };
+  refine measurable.comp _ _;
+  fail_if_success { exact measurable_id }]
+meta def apply_measurable.comp_ae_measurable : tactic unit :=
+`[fail_if_success { exact ae_measurable_const };
+  refine measurable.comp_ae_measurable _ _;
+  fail_if_success { exact measurable_id };
+  fail_if_success { exact ae_measurable_id }]
+meta def goal_is_not_measurable : tactic unit :=
+do t ← tactic.target,
+  match t with
+  | `(measurable %%l) := failed
+  | `(ae_measurable %%l %%r) := failed
+  | `(measurable_set %%l) := failed
+  | _ := skip
+  end
+meta def measurability_tactics (md : transparency := semireducible) : list (tactic string) :=
+[
+  propositional_goal >> apply_assumption
+                        >> pure "apply_assumption",
+  goal_is_not_measurable >> intro1
+                        >>= λ ns, pure ("intro " ++ ns.to_string),
+  apply_rules [] [``measurability] 50 { md := md }
+                        >> pure "apply_rules with measurability",
+  apply_measurable.comp >> pure "refine measurable.comp _ _",
+  apply_measurable.comp_ae_measurable
+                        >> pure "refine measurable.comp_ae_measurable _ _",
+  `[ refine measurable.ae_measurable _ ]
+                        >> pure "refine measurable.ae_measurable _",
+  `[ refine measurable.ae_strongly_measurable _ ]
+                        >> pure "refine measurable.ae_strongly_measurable _"
+]
+namespace interactive
+setup_tactic_parser
+meta def measurability
+  (bang : parse $ optional (tk "!")) (trace : parse $ optional (tk "?")) (cfg : tidy.cfg := {}) :
+  tactic unit :=
+let md                 := if bang.is_some then semireducible else reducible,
+    measurability_core := tactic.tidy { tactics := measurability_tactics md, ..cfg },
+    trace_fn           := if trace.is_some then show_term else id in
+trace_fn measurability_core
+meta def measurability' : tactic unit := measurability none none {}
+add_tactic_doc
+{ name := "measurability / measurability'",
+  category := doc_category.tactic,
+  decl_names := [`tactic.interactive.measurability, `tactic.interactive.measurability'],
+  tags := ["lemma application"] }
+end interactive
+end tactic

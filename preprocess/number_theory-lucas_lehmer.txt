@@ -1,0 +1,148 @@
+import data.nat.parity
+import data.pnat.interval
+import data.zmod.basic
+import group_theory.order_of_element
+import ring_theory.fintype
+import tactic.interval_cases
+import tactic.ring_exp
+def mersenne (p : ℕ) : ℕ := 2^p - 1
+lemma mersenne_pos {p : ℕ} (h : 0 < p) : 0 < mersenne p :=
+begin
+  dsimp [mersenne],
+  calc 0 < 2^1 - 1 : by norm_num
+     ... ≤ 2^p - 1 : nat.pred_le_pred (nat.pow_le_pow_of_le_right (nat.succ_pos 1) h)
+end
+@[simp]
+lemma succ_mersenne (k : ℕ) : mersenne k + 1 = 2 ^ k :=
+begin
+  rw [mersenne, tsub_add_cancel_of_le],
+  exact one_le_pow_of_one_le (by norm_num) k
+end
+namespace lucas_lehmer
+open nat
+def s : ℕ → ℤ
+| 0 := 4
+| (i+1) := (s i)^2 - 2
+def s_zmod (p : ℕ) : ℕ → zmod (2^p - 1)
+| 0 := 4
+| (i+1) := (s_zmod i)^2 - 2
+def s_mod (p : ℕ) : ℕ → ℤ
+| 0 := 4 % (2^p - 1)
+| (i+1) := ((s_mod i)^2 - 2) % (2^p - 1)
+lemma mersenne_int_ne_zero (p : ℕ) (w : 0 < p) : (2^p - 1 : ℤ) ≠ 0 :=
+begin
+  apply ne_of_gt, simp only [gt_iff_lt, sub_pos],
+  exact_mod_cast nat.one_lt_two_pow p w,
+end
+lemma s_mod_nonneg (p : ℕ) (w : 0 < p) (i : ℕ) : 0 ≤ s_mod p i :=
+begin
+  cases i; dsimp [s_mod],
+  { exact sup_eq_left.mp rfl },
+  { apply int.mod_nonneg, exact mersenne_int_ne_zero p w },
+end
+lemma s_mod_mod (p i : ℕ) : s_mod p i % (2^p - 1) = s_mod p i :=
+by cases i; simp [s_mod]
+lemma s_mod_lt (p : ℕ) (w : 0 < p) (i : ℕ) : s_mod p i < 2^p - 1 :=
+begin
+  rw ←s_mod_mod,
+  convert int.mod_lt _ _,
+  { refine (abs_of_nonneg _).symm,
+    simp only [sub_nonneg, ge_iff_le],
+    exact_mod_cast nat.one_le_two_pow p, },
+  { exact mersenne_int_ne_zero p w, },
+end
+lemma s_zmod_eq_s (p' : ℕ) (i : ℕ) : s_zmod (p'+2) i = (s i : zmod (2^(p'+2) - 1)):=
+begin
+  induction i with i ih,
+  { dsimp [s, s_zmod], norm_num, },
+  { push_cast [s, s_zmod, ih] },
+end
+def lucas_lehmer_residue (p : ℕ) : zmod (2^p - 1) := s_zmod p (p-2)
+lemma residue_eq_zero_iff_s_mod_eq_zero (p : ℕ) (w : 1 < p) :
+  lucas_lehmer_residue p = 0 ↔ s_mod p (p-2) = 0 :=
+begin
+  dsimp [lucas_lehmer_residue],
+  rw s_zmod_eq_s_mod p,
+  split,
+@[derive decidable_pred]
+def lucas_lehmer_test (p : ℕ) : Prop := lucas_lehmer_residue p = 0
+def q (p : ℕ) : ℕ+ := ⟨nat.min_fac (mersenne p), nat.min_fac_pos (mersenne p)⟩
+local attribute [instance]
+lemma fact_pnat_pos (q : ℕ+) : fact (0 < (q : ℕ)) := ⟨q.2⟩
+lemma X_card : fintype.card (X q) = q^2 :=
+begin
+  dsimp [X],
+  rw [fintype.card_prod, zmod.card q],
+  ring,
+end
+lemma units_card (w : 1 < q) : fintype.card ((X q)ˣ) < q^2 :=
+begin
+  haveI : fact (1 < (q:ℕ)) := ⟨w⟩,
+  convert card_units_lt (X q),
+  rw X_card,
+end
+def ω : X q := (2, 1)
+def ωb : X q := (2, -1)
+lemma ω_mul_ωb (q : ℕ+) : (ω : X q) * ωb = 1 :=
+begin
+  dsimp [ω, ωb],
+  ext; simp; ring,
+end
+lemma ωb_mul_ω (q : ℕ+) : (ωb : X q) * ω = 1 :=
+begin
+  dsimp [ω, ωb],
+  ext; simp; ring,
+end
+lemma closed_form (i : ℕ) : (s i : X q) = (ω : X q)^(2^i) + (ωb : X q)^(2^i) :=
+begin
+  induction i with i ih,
+  { dsimp [s, ω, ωb],
+    ext; { simp; refl, }, },
+  { calc (s (i + 1) : X q) = ((s i)^2 - 2 : ℤ) : rfl
+    ... = ((s i : X q)^2 - 2) : by push_cast
+    ... = (ω^(2^i) + ωb^(2^i))^2 - 2 : by rw ih
+    ... = (ω^(2^i))^2 + (ωb^(2^i))^2 + 2*(ωb^(2^i)*ω^(2^i)) - 2 : by ring
+    ... = (ω^(2^i))^2 + (ωb^(2^i))^2 :
+            by rw [←mul_pow ωb ω, ωb_mul_ω, one_pow, mul_one, add_sub_cancel]
+    ... = ω^(2^(i+1)) + ωb^(2^(i+1)) : by rw [←pow_mul, ←pow_mul, pow_succ'] }
+end
+end X
+open X
+lemma two_lt_q (p' : ℕ) : 2 < q (p'+2) := begin
+  by_contradiction H,
+  simp at H,
+  interval_cases q (p'+2); clear H,
+theorem mersenne_coe_X (p : ℕ) : (mersenne p : X (q p)) = 0 :=
+begin
+  ext; simp [mersenne, q, zmod.nat_coe_zmod_eq_zero_iff_dvd, -pow_pos],
+  apply nat.min_fac_dvd,
+end
+theorem ω_pow_eq_neg_one (p' : ℕ) (h : lucas_lehmer_residue (p'+2) = 0) :
+  (ω : X (q (p'+2)))^(2^(p'+1)) = -1 :=
+begin
+  cases ω_pow_formula p' h with k w,
+  rw [mersenne_coe_X] at w,
+  simpa using w,
+end
+theorem ω_pow_eq_one (p' : ℕ) (h : lucas_lehmer_residue (p'+2) = 0) :
+  (ω : X (q (p'+2)))^(2^(p'+2)) = 1 :=
+calc (ω : X (q (p'+2)))^2^(p'+2)
+        = (ω^(2^(p'+1)))^2 : by rw [←pow_mul, ←pow_succ']
+    ... = (-1)^2           : by rw ω_pow_eq_neg_one p' h
+    ... = 1                : by simp
+def ω_unit (p : ℕ) : units (X (q p)) :=
+{ val := ω,
+  inv := ωb,
+  val_inv := by simp [ω_mul_ωb],
+  inv_val := by simp [ωb_mul_ω], }
+@[simp] lemma ω_unit_coe (p : ℕ) : (ω_unit p : X (q p)) = ω := rfl
+theorem order_ω (p' : ℕ) (h : lucas_lehmer_residue (p'+2) = 0) :
+  order_of (ω_unit (p'+2)) = 2^(p'+2) :=
+begin
+meta def run_test : tactic unit :=
+do `(lucas_lehmer_test %%p) ← target,
+   `[dsimp [lucas_lehmer_test]],
+   `[rw lucas_lehmer.residue_eq_zero_iff_s_mod_eq_zero, swap, norm_num],
+   p ← eval_expr ℕ p,
+example : (mersenne 7).prime := lucas_lehmer_sufficiency _ (by norm_num) (by lucas_lehmer.run_test).
+lemma modeq_mersenne (n k : ℕ) : k ≡ ((k / 2^n) + (k % 2^n)) [MOD 2^n - 1] :=

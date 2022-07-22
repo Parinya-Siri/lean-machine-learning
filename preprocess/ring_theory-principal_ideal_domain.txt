@@ -1,0 +1,114 @@
+import ring_theory.unique_factorization_domain
+universes u v
+variables {R : Type u} {M : Type v}
+open set function
+open submodule
+open_locale classical
+section
+variables [ring R] [add_comm_group M] [module R M]
+class submodule.is_principal (S : submodule R M) : Prop :=
+(principal [] : ∃ a, S = span R {a})
+instance bot_is_principal : (⊥ : submodule R M).is_principal :=
+⟨⟨0, by simp⟩⟩
+instance top_is_principal : (⊤ : submodule R R).is_principal :=
+⟨⟨1, ideal.span_singleton_one.symm⟩⟩
+variables (R)
+class is_principal_ideal_ring (R : Type u) [ring R] : Prop :=
+(principal : ∀ (S : ideal R), S.is_principal)
+attribute [instance] is_principal_ideal_ring.principal
+@[priority 100]
+instance division_ring.is_principal_ideal_ring (K : Type u) [division_ring K] :
+  is_principal_ideal_ring K :=
+{ principal := λ S, by rcases ideal.eq_bot_or_top S with (rfl|rfl); apply_instance }
+end
+namespace submodule.is_principal
+variables [add_comm_group M]
+section ring
+variables [ring R] [module R M]
+noncomputable def generator (S : submodule R M) [S.is_principal] : M :=
+classical.some (principal S)
+lemma span_singleton_generator (S : submodule R M) [S.is_principal] : span R {generator S} = S :=
+eq.symm (classical.some_spec (principal S))
+lemma _root_.ideal.span_singleton_generator (I : ideal R) [I.is_principal] :
+  ideal.span ({generator I} : set R) = I :=
+eq.symm (classical.some_spec (principal I))
+@[simp] lemma generator_mem (S : submodule R M) [S.is_principal] : generator S ∈ S :=
+by { conv_rhs { rw ← span_singleton_generator S }, exact subset_span (mem_singleton _) }
+lemma mem_iff_eq_smul_generator (S : submodule R M) [S.is_principal] {x : M} :
+  x ∈ S ↔ ∃ s : R, x = s • generator S :=
+by simp_rw [@eq_comm _ x, ← mem_span_singleton, span_singleton_generator]
+lemma eq_bot_iff_generator_eq_zero (S : submodule R M) [S.is_principal] :
+  S = ⊥ ↔ generator S = 0 :=
+by rw [← @span_singleton_eq_bot R M, span_singleton_generator]
+end ring
+section comm_ring
+variables [comm_ring R] [module R M]
+lemma mem_iff_generator_dvd (S : ideal R) [S.is_principal] {x : R} : x ∈ S ↔ generator S ∣ x :=
+(mem_iff_eq_smul_generator S).trans (exists_congr (λ a, by simp only [mul_comm, smul_eq_mul]))
+lemma prime_generator_of_is_prime (S : ideal R) [submodule.is_principal S] [is_prime : S.is_prime]
+  (ne_bot : S ≠ ⊥) :
+  prime (generator S) :=
+⟨λ h, ne_bot ((eq_bot_iff_generator_eq_zero S).2 h),
+ λ h, is_prime.ne_top (S.eq_top_of_is_unit_mem (generator_mem S) h),
+ by simpa only [← mem_iff_generator_dvd S] using is_prime.2⟩
+noncomputable def factors (a : R) : multiset R :=
+if h : a = 0 then ∅ else classical.some (wf_dvd_monoid.exists_factors a h)
+lemma factors_spec (a : R) (h : a ≠ 0) :
+  (∀b∈factors a, irreducible b) ∧ associated (factors a).prod a :=
+begin
+  unfold factors, rw [dif_neg h],
+  exact classical.some_spec (wf_dvd_monoid.exists_factors a h)
+end
+lemma ne_zero_of_mem_factors
+  {R : Type v} [comm_ring R] [is_domain R] [is_principal_ideal_ring R] {a b : R}
+  (ha : a ≠ 0) (hb : b ∈ factors a) : b ≠ 0 := irreducible.ne_zero ((factors_spec a ha).1 b hb)
+lemma mem_submonoid_of_factors_subset_of_units_subset (s : submonoid R)
+  {a : R} (ha : a ≠ 0) (hfac : ∀ b ∈ factors a, b ∈ s) (hunit : ∀ c : Rˣ, (c : R) ∈ s) :
+  a ∈ s :=
+begin
+  rcases ((factors_spec a ha).2) with ⟨c, hc⟩,
+  rw [← hc],
+  exact mul_mem (multiset_prod_mem _ hfac) (hunit _)
+end
+lemma ring_hom_mem_submonoid_of_factors_subset_of_units_subset {R S : Type*}
+  [comm_ring R] [is_domain R] [is_principal_ideal_ring R] [semiring S]
+  (f : R →+* S) (s : submonoid S) (a : R) (ha : a ≠ 0)
+  (h : ∀ b ∈ factors a, f b ∈ s) (hf: ∀ c : Rˣ, f c ∈ s) :
+  f a ∈ s :=
+mem_submonoid_of_factors_subset_of_units_subset (s.comap f.to_monoid_hom) ha h hf
+lemma is_principal_ideal_ring.of_surjective [is_principal_ideal_ring R]
+  (f : R →+* S) (hf : function.surjective f) :
+  is_principal_ideal_ring S :=
+⟨λ I, ideal.is_principal.of_comap f hf I⟩
+end surjective
+section
+open ideal
+variables [comm_ring R] [is_domain R] [is_principal_ideal_ring R] [gcd_monoid R]
+theorem span_gcd (x y : R) : span ({gcd x y} : set R) = span ({x, y} : set R) :=
+begin
+  obtain ⟨d, hd⟩ := is_principal_ideal_ring.principal (span ({x, y} : set R)),
+  rw submodule_span_eq at hd,
+  rw [hd],
+  suffices : associated d (gcd x y),
+  { obtain ⟨D, HD⟩ := this,
+    rw ←HD,
+    exact (span_singleton_mul_right_unit D.is_unit _) },
+  apply associated_of_dvd_dvd,
+  { rw dvd_gcd_iff,
+    split; rw [←ideal.mem_span_singleton, ←hd, mem_span_pair],
+    { use [1, 0],
+      rw [one_mul, zero_mul, add_zero] },
+    { use [0, 1],
+      rw [one_mul, zero_mul, zero_add] } },
+  { obtain ⟨r, s, rfl⟩ : ∃ r s, r * x + s * y = d,
+    { rw [←mem_span_pair, hd, ideal.mem_span_singleton] },
+    apply dvd_add; apply dvd_mul_of_dvd_right,
+    exacts [gcd_dvd_left x y, gcd_dvd_right x y] },
+end
+theorem gcd_dvd_iff_exists (a b : R) {z} : gcd a b ∣ z ↔ ∃ x y, z = a * x + b * y :=
+by simp_rw [mul_comm a, mul_comm b, @eq_comm _ z, ←mem_span_pair, ←span_gcd,
+  ideal.mem_span_singleton]
+theorem exists_gcd_eq_mul_add_mul (a b : R) : ∃ x y, gcd a b = a * x + b * y :=
+by rw [←gcd_dvd_iff_exists]
+theorem gcd_is_unit_iff (x y : R) : is_unit (gcd x y) ↔ is_coprime x y :=
+by rw [is_coprime, ←mem_span_pair, ←span_gcd, ←span_singleton_eq_top, eq_top_iff_one]

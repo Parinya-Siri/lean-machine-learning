@@ -1,0 +1,72 @@
+import data.list.chain
+import category_theory.punit
+import category_theory.is_connected
+import category_theory.sigma.basic
+import category_theory.full_subcategory
+universes v₁ v₂ v₃ u₁ u₂
+noncomputable theory
+open category_theory.category
+namespace category_theory
+attribute [instance, priority 100] is_connected.is_nonempty
+variables {J : Type u₁} [category.{v₁} J]
+variables {C : Type u₂} [category.{u₁} C]
+def connected_components (J : Type u₁) [category.{v₁} J] : Type u₁ := quotient (zigzag.setoid J)
+instance [inhabited J] : inhabited (connected_components J) := ⟨quotient.mk' default⟩
+@[derive category]
+def component (j : connected_components J) : Type u₁ := {k : J // quotient.mk' k = j}
+@[derive [full, faithful], simps {rhs_md := semireducible}]
+def component.ι (j) : component j ⥤ J :=
+full_subcategory_inclusion _
+instance (j : connected_components J) : nonempty (component j) :=
+begin
+  apply quotient.induction_on' j,
+  intro k,
+  refine ⟨⟨k, rfl⟩⟩,
+end
+instance (j : connected_components J) : inhabited (component j) := classical.inhabited_of_nonempty'
+instance (j : connected_components J) : is_connected (component j) :=
+begin
+abbreviation decomposed (J : Type u₁) [category.{v₁} J] :=
+Σ (j : connected_components J), component j
+@[simps {rhs_md := semireducible}]
+def decomposed_to (J : Type u₁) [category.{v₁} J] : decomposed J ⥤ J :=
+sigma.desc component.ι
+@[simp]
+lemma inclusion_comp_decomposed_to (j : connected_components J) :
+  inclusion j ⋙ decomposed_to J = component.ι j :=
+rfl
+instance : full (decomposed_to J) :=
+{ preimage :=
+  begin
+    rintro ⟨j', X, hX⟩ ⟨k', Y, hY⟩ f,
+    dsimp at f,
+    have : j' = k',
+      rw [← hX, ← hY, quotient.eq'],
+      exact relation.refl_trans_gen.single (or.inl ⟨f⟩),
+    subst this,
+    refine sigma.sigma_hom.mk f,
+  end,
+  witness' :=
+  begin
+    rintro ⟨j', X, hX⟩ ⟨_, Y, rfl⟩ f,
+    have : quotient.mk' Y = j',
+    { rw [← hX, quotient.eq'],
+      exact relation.refl_trans_gen.single (or.inr ⟨f⟩) },
+    subst this,
+    refl,
+  end }
+instance : faithful (decomposed_to J) :=
+{ map_injective' :=
+  begin
+    rintro ⟨_, j, rfl⟩ ⟨_, k, hY⟩ ⟨_, _, _, f⟩ ⟨_, _, _, g⟩ e,
+    change f = g at e,
+    subst e,
+  end }
+instance : ess_surj (decomposed_to J) :=
+{ mem_ess_image := λ j, ⟨⟨_, j, rfl⟩, ⟨iso.refl _⟩⟩ }
+instance : is_equivalence (decomposed_to J) :=
+equivalence.of_fully_faithfully_ess_surj _
+@[simps functor {rhs_md := semireducible}]
+def decomposed_equiv : decomposed J ≌ J :=
+(decomposed_to J).as_equivalence
+end category_theory

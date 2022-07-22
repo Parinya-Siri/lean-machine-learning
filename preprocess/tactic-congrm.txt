@@ -1,0 +1,52 @@
+import tactic.interactive
+namespace tactic
+private meta def extract_subgoals : list expr → list congr_arg_kind → list expr →
+  tactic (list (expr × expr))
+| (_ :: _ :: g :: prf_args) (congr_arg_kind.eq :: kinds)             (pat :: pat_args) :=
+  (λ rest, (g, pat) :: rest) <$> extract_subgoals prf_args kinds pat_args
+| (_ :: prf_args)           (congr_arg_kind.fixed :: kinds)          (_ :: pat_args) :=
+  extract_subgoals prf_args kinds pat_args
+| prf_args                  (congr_arg_kind.fixed_no_param :: kinds) (_ :: pat_args) :=
+  extract_subgoals prf_args kinds pat_args
+| (_ :: _ :: prf_args)      (congr_arg_kind.cast :: kinds)           (_ :: pat_args) :=
+  extract_subgoals prf_args kinds pat_args
+| _ _ [] := pure []
+| _ _ _ := fail "unsupported congr lemma"
+meta def equate_with_pattern_core : expr → tactic (list expr) | pat :=
+(applyc ``subsingleton.elim >> pure []) <|>
+(applyc ``rfl >> pure []) <|>
+if pat.is_mvar || pat.get_delayed_abstraction_locals.is_some then do
+  try $ applyc ``_root_.propext,
+  get_goals <* set_goals []
+else match pat with
+| expr.app _ _ := do
+  cl ← mk_specialized_congr_lemma pat,
+  H_congr_lemma ← assertv `H_congr_lemma cl.type cl.proof,
+  [prf] ← get_goals,
+  apply H_congr_lemma <|> fail "could not apply congr_lemma",
+meta def equate_with_pattern (pat : expr) : tactic unit := do
+congr_subgoals ← solve1 (equate_with_pattern_core pat),
+gs ← get_goals,
+set_goals $ congr_subgoals ++ gs
+end tactic
+namespace tactic.interactive
+open tactic interactive
+setup_tactic_parser
+  sorry,
+  sorry,
+  sorry,
+end
+example {a b : ℕ} (h : a = b) : (λ y : ℕ, ∀ z, a + a = z) = (λ x, ∀ z, b + a = z) :=
+begin
+  congrm λ x, ∀ w, _ + a = w,
+meta def congrm (arg : parse texpr) : tactic unit := do
+try $ applyc ``_root_.eq.to_iff,
+`(@eq %%ty _ _) ← target | fail "congrm: goal must be an equality or iff",
+ta ← to_expr ``((%%arg : %%ty)) tt ff,
+equate_with_pattern ta
+add_tactic_doc
+{ name := "congrm",
+  category := doc_category.tactic,
+  decl_names := [`tactic.interactive.congrm],
+  tags := ["congruence"] }
+end tactic.interactive

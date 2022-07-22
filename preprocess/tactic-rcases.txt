@@ -1,0 +1,411 @@
+import data.dlist
+import tactic.core
+import tactic.clear
+open lean lean.parser
+namespace tactic
+@[reducible] def list_Sigma := list
+@[reducible] def list_Pi := list
+local notation `listΣ` := list_Sigma
+local notation `listΠ` := list_Pi
+@[reducible] meta def uncleared_goal := list expr × expr
+meta inductive rcases_patt : Type
+| one : name → rcases_patt
+| clear : rcases_patt
+| typed : rcases_patt → pexpr → rcases_patt
+| tuple : listΠ rcases_patt → rcases_patt
+| alts : listΣ rcases_patt → rcases_patt
+namespace rcases_patt
+meta instance inhabited : inhabited rcases_patt :=
+⟨one `_⟩
+meta def name : rcases_patt → option name
+| (one `_) := none
+| (one `rfl) := none
+| (one n) := some n
+| (typed p _) := p.name
+| (alts [p]) := p.name
+| _ := none
+meta def as_tuple : rcases_patt → listΠ rcases_patt
+| (tuple ps) := ps
+| p := [p]
+meta def as_alts : rcases_patt → listΣ rcases_patt
+| (alts ps) := ps
+| p := [p]
+meta def tuple' : listΠ rcases_patt → rcases_patt
+| [p] := p
+| ps := tuple ps
+meta def alts' : listΣ rcases_patt → rcases_patt
+| [p] := p
+| ps := alts ps
+meta def tuple₁_core : listΠ rcases_patt → listΠ rcases_patt
+| [] := []
+| [tuple []] := [tuple []]
+| [tuple ps] := ps
+| (p :: ps) := p :: tuple₁_core ps
+meta def tuple₁ : listΠ rcases_patt → rcases_patt
+| [] := default
+| [one n] := one n
+| ps := tuple (tuple₁_core ps)
+meta def alts₁_core : listΣ (listΠ rcases_patt) → listΣ rcases_patt
+| [] := []
+| [[alts ps]] := ps
+| (p :: ps) := tuple₁ p :: alts₁_core ps
+meta def alts₁ : listΣ (listΠ rcases_patt) → rcases_patt
+| [[]] := tuple []
+| [[alts ps]] := tuple [alts ps]
+| ps := alts' (alts₁_core ps)
+meta instance has_reflect : has_reflect rcases_patt
+| (one n) := `(_)
+| clear := `(_)
+| (typed l e) :=
+  (`(typed).subst (has_reflect l)).subst (reflect e)
+| (tuple l) := `(λ l, tuple l).subst $
+  by haveI := has_reflect; exact list.reflect l
+| (alts l) := `(λ l, alts l).subst $
+  by haveI := has_reflect; exact list.reflect l
+protected meta def format : ∀ bracket : bool, rcases_patt → tactic _root_.format
+| _ (one n) := pure $ to_fmt n
+| _ clear := pure "-"
+| _ (tuple []) := pure "⟨⟩"
+| _ (tuple ls) := do
+  fs ← ls.mmap $ format ff,
+  pure $ "⟨" ++ _root_.format.group (_root_.format.nest 1 $
+    _root_.format.join $ list.intersperse ("," ++ _root_.format.line) fs) ++ "⟩"
+| br (alts ls) := do
+  fs ← ls.mmap $ format tt,
+  let fmt := _root_.format.join $ list.intersperse (↑" |" ++ _root_.format.space) fs,
+  pure $ if br then _root_.format.bracket "(" ")" fmt else fmt
+| br (typed p e) := do
+  fp ← format ff p,
+  fe ← pp e,
+  let fmt := fp ++ " : " ++ fe,
+  pure $ if br then _root_.format.bracket "(" ")" fmt else fmt
+meta instance has_to_tactic_format : has_to_tactic_format rcases_patt := ⟨rcases_patt.format ff⟩
+end rcases_patt
+meta def rcases.process_constructor :
+  nat → listΠ rcases_patt → listΠ name × listΠ rcases_patt
+| 0     ps  := ([], [])
+| 1     []  := ([`_], [default])
+| 1     [p] := ([p.name.get_or_else `_], [p])
+meta def rcases.process_constructors (params : nat) :
+  listΣ name → listΣ rcases_patt →
+  tactic (dlist name × listΣ (name × listΠ rcases_patt))
+| []      ps := pure (dlist.empty, [])
+| (c::cs) ps := do
+  n ← mk_const c >>= get_arity,
+  let (h, t) := (match cs, ps.tail with
+private def align {α β} (p : α → β → Prop) [∀ a b, decidable (p a b)] :
+  list α → list β → list (α × β)
+| (a::as) (b::bs) :=
+  if p a b then (a, b) :: align as bs else align as (b::bs)
+| _ _ := []
+private meta def get_local_and_type (e : expr) : tactic (expr × expr) :=
+(do t ← infer_type e, pure (t, e)) <|> (do
+    e ← get_local e.local_pp_name,
+    t ← infer_type e, pure (t, e))
+meta mutual def rcases_core, rcases.continue
+with rcases_core : rcases_patt → expr → tactic (list uncleared_goal)
+| (rcases_patt.one `rfl) e := do
+  (t, e) ← get_local_and_type e,
+  subst' e,
+  list.map (prod.mk []) <$> get_goals
+meta def clear_goals (ugs : list uncleared_goal) : tactic unit := do
+  gs ← ugs.mmap (λ ⟨cs, g⟩, do
+    set_goals [g],
+    cs ← cs.mfoldr (λ c cs,
+      (do (_, c) ← get_local_and_type c, pure (c :: cs)) <|> pure cs) [],
+    clear' tt cs,
+    [g] ← get_goals,
+    pure g),
+  set_goals gs
+meta def rcases (h : option name) (p : pexpr) (pat : rcases_patt) : tactic unit := do
+  let p := match pat with
+  | rcases_patt.typed _ ty := ``(%%p : %%ty)
+  | _ := p
+  end,
+  e ← match h with
+    | some h := do
+      x ← get_unused_name $ pat.name.get_or_else `this,
+      interactive.generalize h () (p, x),
+      get_local x
+    | none := i_to_expr p
+    end,
+  if e.is_local_constant then
+    focus1 (rcases_core pat e >>= clear_goals)
+  else do
+    x ← pat.name.elim mk_fresh_name pure,
+    n ← revert_kdependencies e semireducible,
+    tactic.generalize e x <|> (do
+      t ← infer_type e,
+      tactic.assertv x t e,
+      get_local x >>= tactic.revert,
+      pure ()),
+    h ← tactic.intro1,
+    focus1 (rcases_core pat h >>= clear_goals)
+meta def rcases_many (ps : listΠ pexpr) (pat : rcases_patt) : tactic unit := do
+  let (_, pats) := rcases.process_constructor ps.length pat.as_tuple,
+  pes ← (ps.zip pats).mmap (λ ⟨p, pat⟩, do
+    let p := match pat with
+    | rcases_patt.typed _ ty := ``(%%p : %%ty)
+    | _ := p
+    end,
+    e ← i_to_expr p,
+    if e.is_local_constant then
+      pure (pat, e)
+    else do
+      x ← pat.name.elim mk_fresh_name pure,
+      n ← revert_kdependencies e semireducible,
+      tactic.generalize e x <|> (do
+        t ← infer_type e,
+        tactic.assertv x t e,
+        get_local x >>= tactic.revert,
+        pure ()),
+      prod.mk pat <$> tactic.intro1),
+  focus1 (rcases.continue pes >>= clear_goals)
+meta def rintro (ids : listΠ rcases_patt) : tactic unit :=
+do l ← ids.mmap (λ id, do
+    e ← intro $ id.name.get_or_else `_,
+    pure (id, e)),
+  focus1 (rcases.continue l >>= clear_goals)
+def merge_list {α} (m : α → α → α) : list α → list α → list α
+| [] l₂ := l₂
+| l₁ [] := l₁
+| (a :: l₁) (b :: l₂) := m a b :: merge_list l₁ l₂
+meta def rcases_patt.merge : rcases_patt → rcases_patt → rcases_patt
+| (rcases_patt.alts p₁) p₂ := rcases_patt.alts (merge_list rcases_patt.merge p₁ p₂.as_alts)
+| p₁ (rcases_patt.alts p₂) := rcases_patt.alts (merge_list rcases_patt.merge p₁.as_alts p₂)
+| (rcases_patt.tuple p₁) p₂ := rcases_patt.tuple (merge_list rcases_patt.merge p₁ p₂.as_tuple)
+| p₁ (rcases_patt.tuple p₂) := rcases_patt.tuple (merge_list rcases_patt.merge p₁.as_tuple p₂)
+| (rcases_patt.typed p₁ e) p₂ := rcases_patt.typed (p₁.merge p₂) e
+| p₁ (rcases_patt.typed p₂ e) := rcases_patt.typed (p₁.merge p₂) e
+| (rcases_patt.one `rfl) (rcases_patt.one `rfl) := rcases_patt.one `rfl
+| (rcases_patt.one `_) p := p
+| p (rcases_patt.one `_) := p
+| rcases_patt.clear p := p
+| p rcases_patt.clear := p
+| (rcases_patt.one n) _ := rcases_patt.one n
+meta mutual def rcases_hint_core, rcases_hint.process_constructors, rcases_hint.continue
+with rcases_hint_core : ℕ → expr → tactic (rcases_patt × list expr)
+| depth e := do
+  (t, e) ← get_local_and_type e,
+  t ← whnf t,
+  env ← get_env,
+  let I := t.get_app_fn.const_name,
+  (do guard (I = ``eq),
+    subst' e,
+    prod.mk (rcases_patt.one `rfl) <$> get_goals) <|>
+  (do
+    let c := env.constructors_of I,
+    some l ← try_core (guard (depth ≠ 0) >> cases_core e) |
+      let n := match e.local_pp_name with name.anonymous := `_ | n := n end in
+      prod.mk (rcases_patt.one n) <$> get_goals,
+    gs ← get_goals,
+    if gs.empty then
+      pure (rcases_patt.tuple [], [])
+    else do
+      (ps, gs') ← rcases_hint.process_constructors (depth - 1) c (gs.zip l),
+      pure (rcases_patt.alts₁ ps, gs'))
+with rcases_hint.process_constructors : ℕ → listΣ name →
+  list (expr × name × listΠ expr × list (name × expr)) →
+  tactic (listΣ (listΠ rcases_patt) × list expr)
+| depth [] _  := pure ([], [])
+| depth cs [] := pure (cs.map (λ _, []), [])
+| depth (c::cs) ls@((g, c', hs, _) :: l) :=
+  if c ≠ c' then do
+    (ps, gs) ← rcases_hint.process_constructors depth cs ls,
+    pure ([] :: ps, gs)
+  else do
+    (p, gs) ← set_goals [g] >> rcases_hint.continue depth hs,
+    (ps, gs') ← rcases_hint.process_constructors depth cs l,
+    pure (p :: ps, gs ++ gs')
+with rcases_hint.continue : ℕ → listΠ expr → tactic (listΠ rcases_patt × list expr)
+| depth [] := prod.mk [] <$> get_goals
+| depth (e :: es) := do
+  (p, gs) ← rcases_hint_core depth e,
+  (ps, gs') ← gs.mfoldl (λ (r : listΠ rcases_patt × list expr) g,
+    do (ps, gs') ← set_goals [g] >> rcases_hint.continue depth es,
+      pure (merge_list rcases_patt.merge r.1 ps, r.2 ++ gs')) ([], []),
+  pure (p :: ps, gs')
+meta def rcases_hint (p : pexpr) (depth : nat) : tactic rcases_patt :=
+do e ← i_to_expr p,
+  if e.is_local_constant then
+    focus1 $ do (p, gs) ← rcases_hint_core depth e, set_goals gs, pure p
+  else do
+    x ← mk_fresh_name,
+    n ← revert_kdependencies e semireducible,
+    tactic.generalize e x <|> (do
+      t ← infer_type e,
+      tactic.assertv x t e,
+      get_local x >>= tactic.revert,
+      pure ()),
+    h ← tactic.intro1,
+    focus1 $ do (p, gs) ← rcases_hint_core depth h, set_goals gs, pure p
+meta def rcases_hint_many (ps : list pexpr) (depth : nat) : tactic (listΠ rcases_patt) :=
+do es ← ps.mmap (λ p, do
+    e ← i_to_expr p,
+    if e.is_local_constant then pure e
+    else do
+      x ← mk_fresh_name,
+      n ← revert_kdependencies e semireducible,
+      tactic.generalize e x <|> (do
+        t ← infer_type e,
+        tactic.assertv x t e,
+        get_local x >>= tactic.revert,
+        pure ()),
+      tactic.intro1),
+  focus1 $ do
+    (ps, gs) ← rcases_hint.continue depth es,
+    set_goals gs,
+    pure ps
+meta def rintro_hint (depth : nat) : tactic (listΠ rcases_patt) :=
+do l ← intros,
+  focus1 $ do
+    (p, gs) ← rcases_hint.continue depth l,
+    set_goals gs,
+    pure p
+setup_tactic_parser
+meta mutual def
+  rcases_patt_parse_hi', rcases_patt_parse', rcases_patt_parse_list', rcases_patt_parse_list_rest
+with rcases_patt_parse_hi' : parser rcases_patt
+| x := ((brackets "(" ")" rcases_patt_parse') <|>
+  (rcases_patt.tuple <$> brackets "⟨" "⟩" (sep_by (tk ",") rcases_patt_parse')) <|>
+  (tk "-" $> rcases_patt.clear) <|>
+  (rcases_patt.one <$> ident_)) x
+with rcases_patt_parse' : parser rcases_patt
+| x := (do
+  pat ← rcases_patt.alts' <$> rcases_patt_parse_list',
+  (tk ":" *> pat.typed <$> texpr) <|> pure pat) x
+with rcases_patt_parse_list' : parser (listΣ rcases_patt)
+| x := (rcases_patt_parse_hi' >>= rcases_patt_parse_list_rest) x
+with rcases_patt_parse_list_rest : rcases_patt → parser (listΣ rcases_patt)
+| pat :=
+  (tk "|" *> list.cons pat <$> rcases_patt_parse_list') <|>
+meta def rcases_patt_parse_hi := with_desc "patt_hi" rcases_patt_parse_hi'
+meta def rcases_patt_parse := with_desc "patt" rcases_patt_parse'
+meta def rcases_patt_parse_list := with_desc "patt_med" rcases_patt_parse_list'
+meta def rcases_parse_depth : parser nat :=
+do o ← (tk ":" *> small_nat)?, pure $ o.get_or_else 5
+@[derive has_reflect]
+meta inductive rcases_args
+| hint (tgt : pexpr ⊕ list pexpr) (depth : nat)
+| rcases (name : option name) (tgt : pexpr) (pat : rcases_patt)
+| rcases_many (tgt : listΠ pexpr) (pat : rcases_patt)
+meta def rcases_parse : parser rcases_args :=
+with_desc "('?' expr (: n)?) | ((h :)? expr (with patt)?)" $ do
+  hint ← (tk "?")?,
+  p ← (sum.inr <$> brackets "⟨" "⟩" (sep_by (tk ",") (parser.pexpr 0))) <|>
+      (sum.inl <$> texpr),
+  match hint with
+  | none := do
+    p ← (do
+      sum.inl (expr.local_const h _ _ _) ← pure p,
+      tk ":" *> (@sum.inl _ (pexpr ⊕ list pexpr) ∘ prod.mk h) <$> texpr) <|>
+      pure (sum.inr p),
+    ids ← (tk "with" *> rcases_patt_parse)?,
+    let ids := ids.get_or_else (rcases_patt.tuple []),
+    pure $ match p with
+    | sum.inl (name, tgt) := rcases_args.rcases (some name) tgt ids
+    | sum.inr (sum.inl tgt) := rcases_args.rcases none tgt ids
+    | sum.inr (sum.inr tgts) := rcases_args.rcases_many tgts ids
+    end
+  | some _ := do
+    depth ← rcases_parse_depth,
+    pure $ rcases_args.hint p depth
+  end
+meta mutual def rintro_patt_parse_hi', rintro_patt_parse'
+with rintro_patt_parse_hi' : parser (listΠ rcases_patt)
+| x := (brackets "(" ")" (rintro_patt_parse' tt) <|>
+  (do p ← rcases_patt_parse_hi, pure [p])) x
+with rintro_patt_parse' : bool → parser (listΠ rcases_patt)
+| med := do
+  ll ← rintro_patt_parse_hi'*,
+  pats ← match med, ll.join with
+  | tt, [] := failure
+  | tt, [pat] := do l ← rcases_patt_parse_list_rest pat, pure [rcases_patt.alts' l]
+  | _, pats := pure pats
+  end,
+  (do tk ":", e ← texpr, pure (pats.map (λ p, rcases_patt.typed p e))) <|>
+  pure pats
+meta def rintro_patt_parse_hi := with_desc "rintro_patt_hi" rintro_patt_parse_hi'
+meta def rintro_patt_parse := with_desc "rintro_patt" $ rintro_patt_parse' tt
+meta def rintro_patt_parse_low := with_desc "rintro_patt_low" $ rintro_patt_parse' ff
+meta def rintro_parse : parser (listΠ rcases_patt ⊕ nat) :=
+with_desc "('?' (: n)?) | patt*" $
+(tk "?" >> sum.inr <$> rcases_parse_depth) <|>
+sum.inl <$> rintro_patt_parse_low
+namespace interactive
+open interactive interactive.types expr
+meta def rcases : parse rcases_parse → tactic unit
+| (rcases_args.rcases h p ids) := tactic.rcases h p ids
+| (rcases_args.rcases_many ps ids) := tactic.rcases_many ps ids
+| (rcases_args.hint p depth) := do
+  (pe, patt) ← match p with
+  | sum.inl p := prod.mk <$> pp p <*> rcases_hint p depth
+  | sum.inr ps := do
+    patts ← rcases_hint_many ps depth,
+    pes ← ps.mmap pp,
+    pure (format.bracket "⟨" "⟩" (format.comma_separated pes), rcases_patt.tuple patts)
+  end,
+  ppat ← pp patt,
+  trace $ ↑"Try this: rcases " ++ pe ++ " with " ++ ppat
+add_tactic_doc
+{ name       := "rcases",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.rcases],
+  tags       := ["induction"] }
+meta def rintro : parse rintro_parse → tactic unit
+| (sum.inl []) := intros []
+| (sum.inl l)  := tactic.rintro l
+| (sum.inr depth) := do
+  ps ← tactic.rintro_hint depth,
+  fs ← ps.mmap (λ p, do
+    f ← pp $ p.format tt,
+    pure $ format.space ++ format.group f),
+  trace $ ↑"Try this: rintro" ++ format.join fs
+meta def rintros := rintro
+add_tactic_doc
+{ name       := "rintro",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.rintro, `tactic.interactive.rintros],
+  tags       := ["induction"],
+  inherit_description_from := `tactic.interactive.rintro }
+setup_tactic_parser
+meta def obtain_parse :
+  parser ((option rcases_patt × option pexpr) × option (pexpr ⊕ list pexpr)) :=
+with_desc "patt? (: expr)? (:= expr)?" $ do
+  (pat, tp) ←
+    (do pat ← rcases_patt_parse,
+      pure $ match pat with
+      | rcases_patt.typed pat tp := (some pat, some tp)
+      | _ := (some pat, none)
+      end) <|>
+    prod.mk none <$> (tk ":" >> texpr)?,
+  prod.mk (pat, tp) <$> (do
+    tk ":=",
+    (guard tp.is_none >>
+      sum.inr <$> brackets "⟨" "⟩" (sep_by (tk ",") (parser.pexpr 0))) <|>
+    (sum.inl <$> texpr))?
+meta def obtain : parse obtain_parse → tactic unit
+| ((pat, _), some (sum.inr val)) :=
+  tactic.rcases_many val (pat.get_or_else default)
+| ((pat, none), some (sum.inl val)) :=
+  tactic.rcases none val (pat.get_or_else default)
+| ((pat, some tp), some (sum.inl val)) :=
+  tactic.rcases none val $ (pat.get_or_else default).typed tp
+| ((pat, some tp), none) := do
+  nm ← mk_fresh_name,
+  e ← to_expr tp >>= assert nm,
+  (g :: gs) ← get_goals,
+  set_goals gs,
+  tactic.rcases none ``(%%e) (pat.get_or_else (rcases_patt.one `this)),
+  gs ← get_goals,
+  set_goals (g::gs)
+| ((pat, none), none) :=
+  fail $ "`obtain` requires either an expected type or a value.\n" ++
+         "usage: `obtain ⟨patt⟩? : type (:= val)?` or `obtain ⟨patt⟩? (: type)? := val`"
+add_tactic_doc
+{ name       := "obtain",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.obtain],
+  tags       := ["induction"] }
+end interactive
+end tactic

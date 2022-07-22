@@ -1,0 +1,233 @@
+import tactic.protected
+import algebra.group.to_additive
+open tactic expr option sum
+setup_tactic_parser
+declare_trace simps.verbose
+declare_trace simps.debug
+@[protect_proj, derive [has_reflect, inhabited]]
+meta structure projection_data :=
+(name : name)
+(expr : expr)
+(proj_nrs : list ℕ)
+(is_default : bool)
+(is_prefix : bool)
+meta structure parsed_projection_data :=
+abbreviation projection_rule := (name × name ⊕ name) × bool
+@[user_attribute] meta def simps_str_attr :
+  user_attribute unit (list name × list projection_data) :=
+{ name := `_simps_str,
+  descr := "An attribute specifying the projection of the given structure.",
+  parser := failed }
+@[user_attribute] meta def notation_class_attr : user_attribute unit (bool × option name) :=
+{ name := `notation_class,
+  descr := "An attribute specifying that this is a notation class. Used by @[simps].",
+  parser := prod.mk <$> (option.is_none <$> (tk "*")?) <*> ident? }
+attribute [notation_class] has_zero has_one has_add has_mul has_inv has_neg has_sub has_div has_dvd
+  has_mod has_le has_lt has_append has_andthen has_union has_inter has_sdiff has_equiv has_subset
+  has_ssubset has_emptyc has_insert has_singleton has_sep has_mem has_pow
+attribute [notation_class* coe_sort] has_coe_to_sort
+attribute [notation_class* coe_fn] has_coe_to_fun
+meta def projections_info (l : list projection_data) (pref : string) (str : name) : tactic format :=
+do
+  ⟨defaults, nondefaults⟩ ← return $ l.partition_map $
+    λ s, if s.is_default then inl s else inr s,
+  to_print ← defaults.mmap $ λ s, to_string <$>
+    let prefix_str := if s.is_prefix then "(prefix) " else "" in
+    pformat!"Projection {prefix_str}{s.name}: {s.expr}",
+  let print2 :=
+    string.join $ (nondefaults.map (λ nm : projection_data, to_string nm.1)).intersperse ", ",
+  let to_print := to_print ++ if nondefaults.length = 0 then [] else
+    ["No lemmas are generated for the projections: " ++ print2 ++ "."],
+  let to_print := string.join $ to_print.intersperse "\n        > ",
+  return format!"[simps] > {pref} {str}:\n        > {to_print}"
+meta def get_composite_of_projections_aux : Π (str : name) (proj : string) (x : expr)
+  (pos : list ℕ) (args : list expr), tactic (expr × list ℕ) | str proj x pos args := do
+  e ← get_env,
+  projs ← e.structure_fields str,
+  let proj_info := projs.map_with_index $ λ n p, (λ x, (x, n, p)) <$> proj.get_rest ("_" ++ p.last),
+  when (proj_info.filter_map id = []) $
+    fail!"Failed to find constructor {proj.popn 1} in structure {str}.",
+  (proj_rest, index, proj_nm) ← return (proj_info.filter_map id).ilast,
+  str_d ← e.get str,
+  let proj_e : expr := const (str ++ proj_nm) str_d.univ_levels,
+  proj_d ← e.get (str ++ proj_nm),
+  type ← infer_type x,
+  let params := get_app_args type,
+  let univs := proj_d.univ_params.zip type.get_app_fn.univ_levels,
+  let new_x := (proj_e.instantiate_univ_params univs).mk_app $ params ++ [x],
+  let new_pos := pos ++ [index],
+  if proj_rest.is_empty then return (new_x.lambdas args, new_pos) else do
+    type ← infer_type new_x,
+    (type_args, tgt) ← open_pis_whnf type,
+    let new_str := tgt.get_app_fn.const_name,
+    get_composite_of_projections_aux new_str proj_rest (new_x.mk_app type_args) new_pos
+      (args ++ type_args)
+meta def get_composite_of_projections (str : name) (proj : string) : tactic (expr × list ℕ) := do
+  e ← get_env,
+  str_d ← e.get str,
+  let str_e : expr := const str str_d.univ_levels,
+  type ← infer_type str_e,
+  (type_args, tgt) ← open_pis_whnf type,
+  let str_ap := str_e.mk_app type_args,
+  x ← mk_local' `x binder_info.default str_ap,
+  get_composite_of_projections_aux str ("_" ++ proj) x [] $ type_args ++ [x]
+    projs ← e.structure_fields str,
+    let projs : list parsed_projection_data := projs.map $ λ nm, ⟨nm, nm, tt, ff⟩,
+    let projs : list parsed_projection_data := rules.foldl (λ projs rule,
+      match rule with
+      | (inl (old_nm, new_nm), is_prefix) := if old_nm ∈ projs.map (λ x, x.new_name) then
+        projs.map $ λ proj,
+          if proj.new_name = old_nm then
+            { new_name := new_nm, is_prefix := is_prefix, ..proj } else
+            proj else
+        projs ++ [⟨old_nm, new_nm, tt, is_prefix⟩]
+      | (inr nm, is_prefix) := if nm ∈ projs.map (λ x, x.new_name) then
+        projs.map $ λ proj, if proj.new_name = nm then
+          { is_default := ff, is_prefix := is_prefix, ..proj } else
+          proj else
+        projs ++ [⟨nm, nm, ff, is_prefix⟩]
+      end) projs,
+    when_tracing `simps.debug trace!"[simps] > Projection info after applying the rules: {projs}.",
+    when ¬ (projs.map $ λ x, x.new_name : list name).nodup $
+      fail $ "Invalid projection names. Two projections have the same name.
+This is likely because a custom composition of projections was given the same name as an " ++
+"existing projection. Solution: rename the existing projection (before renaming the custom " ++
+"projection).",
+    raw_exprs_and_nrs ← projs.mmap $ λ ⟨orig_nm, new_nm, _, _⟩, do
+    { (raw_expr, nrs) ← get_composite_of_projections str orig_nm.last,
+      custom_proj ← do
+      { decl ← e.get (str ++ `simps ++ new_nm.last),
+        let custom_proj := decl.value.instantiate_univ_params $ decl.univ_params.zip raw_levels,
+        when trc trace!
+          "[simps] > found custom projection for {new_nm}:\n        > {custom_proj}",
+        return custom_proj } <|> return raw_expr,
+      is_def_eq custom_proj raw_expr <|>
+    (args, _) ← open_pis d_str.type,
+    let e_str := (expr.const str raw_levels).mk_app args,
+    automatic_projs ← attribute.get_instances `notation_class,
+    raw_exprs ← automatic_projs.mfoldl (λ (raw_exprs : list expr) class_nm, do
+    { (is_class, proj_nm) ← notation_class_attr.get_param class_nm,
+      proj_nm ← proj_nm <|> (e.structure_fields_full class_nm).map list.head,
+      (raw_expr, lambda_raw_expr) ← if is_class then (do
+        guard $ args.length = 1,
+        let e_inst_type := (const class_nm raw_levels).mk_app args,
+        (hyp, e_inst) ← try_for 1000 (mk_conditional_instance e_str e_inst_type),
+        raw_expr ← mk_mapp proj_nm [args.head, e_inst],
+        clear hyp,
+      guard $ projs.any $
+        λ x, x.1 = relevant_proj.last ∧ ¬ e.contains (str ++ `simps ++ x.new_name.last),
+      let pos := projs.find_index (λ x, x.1 = relevant_proj.last),
+      when trc trace!
+        "        > using {proj_nm} instead of the default projection {relevant_proj.last}.",
+      when_tracing `simps.debug trace!"[simps] > The raw projection is:\n  {lambda_raw_expr}",
+      return $ raw_exprs.update_nth pos lambda_raw_expr } <|> return raw_exprs) raw_exprs,
+    let positions := raw_exprs_and_nrs.map prod.snd,
+    let proj_names := projs.map (λ x, x.new_name),
+    let defaults := projs.map (λ x, x.is_default),
+    let prefixes := projs.map (λ x, x.is_prefix),
+    let projs := proj_names.zip_with5 projection_data.mk raw_exprs positions defaults prefixes,
+    projs ← projs.mmap $ λ proj,
+      is_proof proj.expr >>= λ b, return $ if b then { is_default := ff, .. proj } else proj,
+    when trc $ projections_info projs "generated projections for" str >>= trace,
+    simps_str_attr.set str (raw_univs, projs) tt,
+    when_tracing `simps.debug trace!
+       "[simps] > Generated raw projection data: \n{(raw_univs, projs)}",
+    return (raw_univs, projs)
+meta def simps_parse_rule : parser projection_rule :=
+prod.mk <$>
+  ((λ x y, inl (x, y)) <$> ident <*> (tk "->" >> ident) <|> inr <$> (tk "-" >> ident)) <*>
+  is_some <$> (tk "as_prefix")?
+library_note "custom simps projection"
+@[user_command] meta def initialize_simps_projections_cmd
+  (_ : parse $ tk "initialize_simps_projections") : parser unit := do
+  env ← get_env,
+  trc ← is_some <$> (tk "?")?,
+  ns ← (prod.mk <$> ident <*> (tk "(" >> sep_by (tk ",") simps_parse_rule <* tk ")")?)*,
+  ns.mmap' $ λ data, do
+    nm ← resolve_constant data.1,
+    simps_get_raw_projections env nm tt (data.2.get_or_else []) trc
+add_tactic_doc
+{ name                     := "initialize_simps_projections",
+  category                 := doc_category.cmd,
+  decl_names               := [`initialize_simps_projections_cmd],
+  tags                     := ["simplification"] }
+@[derive [has_reflect, inhabited]] structure simps_cfg :=
+(attrs         := [`simp])
+(simp_rhs      := ff)
+(type_md       := transparency.instances)
+(rhs_md        := transparency.none)
+(fully_applied := tt)
+(not_recursive := [`prod, `pprod])
+(trace         := ff)
+(add_additive  := @none name)
+def as_fn : simps_cfg := {fully_applied := ff}
+def lemmas_only : simps_cfg := {attrs := []}
+meta def simps_get_projection_exprs (e : environment) (tgt : expr)
+  (rhs : expr) (cfg : simps_cfg) : tactic $ list $ expr × projection_data := do
+meta def simps_add_projection (nm : name) (type lhs rhs : expr) (args : list expr)
+  (univs : list name) (cfg : simps_cfg) : tactic unit := do
+  when_tracing `simps.debug trace!
+    "[simps] > Planning to add the equality\n        > {lhs} = ({rhs} : {type})",
+  lvl ← get_univ_level type,
+meta def simps_add_projections : Π (e : environment) (nm : name)
+  (type lhs rhs : expr) (args : list expr) (univs : list name) (must_be_str : bool)
+  (cfg : simps_cfg) (todo : list string) (to_apply : list ℕ), tactic unit
+| e nm type lhs rhs args univs must_be_str cfg todo to_apply := do
+  let todo_next := todo.filter (≠ ""),
+  if e.is_structure str ∧ ¬(todo = [] ∧ str ∈ cfg.not_recursive ∧ ¬must_be_str) then do
+    [intro] ← return $ e.constructors_of str | fail "unreachable code (3)",
+    rhs_whnf ← whnf rhs_ap cfg.rhs_md,
+      when ("" ∈ todo ∧ to_apply = []) (if cfg.fully_applied then
+        simps_add_projection nm tgt lhs_ap rhs_ap new_args univs cfg else
+        simps_add_projection nm type lhs rhs args univs cfg) >>
+      return (rhs_whnf, ff) else
+      return (rhs_ap, "" ∈ todo ∧ to_apply = []),
+      when (todo_now ∨ (todo = [] ∧ eta.is_some ∧ to_apply = [])) $
+        if cfg.fully_applied then
+          simps_add_projection nm tgt lhs_ap rhs_ap new_args univs cfg else
+          simps_add_projection nm type lhs rhs args univs cfg,
+      when (to_apply ≠ []) $ do
+      { ⟨new_rhs, proj, proj_expr, proj_nrs, is_default, is_prefix⟩ ←
+          return $ proj_info.inth to_apply.head,
+        new_type ← infer_type new_rhs,
+        when_tracing `simps.debug
+          trace!"[simps] > Applying a custom composite projection. Current lhs:
+        >  {lhs_ap}",
+        simps_add_projections e nm new_type lhs_ap new_rhs new_args univs ff cfg todo
+          to_apply.tail },
+      when ¬(to_apply ≠ [] ∨ todo = [""] ∨ (eta.is_some ∧ todo = [])) $ do
+        let projs : list name := proj_info.map $ λ x, x.snd.name,
+        let todo := if to_apply = [] then todo_next else todo,
+meta def simps_tac (nm : name) (cfg : simps_cfg := {}) (todo : list string := []) (trc := ff) :
+  tactic unit := do
+  e ← get_env,
+  d ← e.get nm,
+  let lhs : expr := const d.to_name d.univ_levels,
+  let todo := todo.dedup.map $ λ proj, "_" ++ proj,
+  let cfg := { trace := cfg.trace || is_trace_enabled_for `simps.verbose || trc, ..cfg },
+  b ← has_attribute' `to_additive nm,
+  cfg ← if b then do
+  { dict ← to_additive.aux_attr.get_cache,
+    when cfg.trace
+      trace!"[simps] > @[to_additive] will be added to all generated lemmas.",
+    return { add_additive := dict.find nm, ..cfg } } else
+    return cfg,
+  simps_add_projections e nm d.type lhs d.value [] d.univ_params tt cfg todo []
+meta def simps_parser : parser (bool × list string × simps_cfg) := do
+prod.mk <$> is_some <$> (tk "?")? <*>
+  (prod.mk <$> many (name.last <$> ident) <*>
+  (do some e ← parser.pexpr? | return {}, eval_pexpr simps_cfg e))
+@[user_attribute] meta def simps_attr : user_attribute unit (bool × list string × simps_cfg) :=
+{ name := `simps,
+  descr := "Automatically derive lemmas specifying the projections of this declaration.",
+  parser := simps_parser,
+  after_set := some $
+    λ n _ persistent, do
+      guard persistent <|> fail "`simps` currently cannot be used as a local attribute",
+      (trc, todo, cfg) ← simps_attr.get_param n,
+      simps_tac n cfg todo trc }
+add_tactic_doc
+{ name                     := "simps",
+  category                 := doc_category.attr,
+  decl_names               := [`simps_attr],
+  tags                     := ["simplification"] }

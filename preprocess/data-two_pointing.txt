@@ -1,0 +1,37 @@
+import data.sum.basic
+import logic.nontrivial
+open function
+variables {α β : Type*}
+@[ext, derive decidable_eq] structure two_pointing (α : Type*) extends α × α :=
+(fst_ne_snd : fst ≠ snd)
+namespace two_pointing
+variables (p : two_pointing α) (q : two_pointing β)
+lemma snd_ne_fst : p.snd ≠ p.fst := p.fst_ne_snd.symm
+@[simps] def swap : two_pointing α := ⟨(p.snd, p.fst), p.snd_ne_fst⟩
+lemma swap_fst : p.swap.fst = p.snd := rfl
+lemma swap_snd : p.swap.snd = p.fst := rfl
+@[simp] lemma swap_swap : p.swap.swap = p := by ext; refl
+def pi : two_pointing (α → β) :=
+{ fst := λ _, q.fst,
+  snd := λ _, q.snd,
+  fst_ne_snd := λ h, q.fst_ne_snd $ by convert congr_fun h (classical.arbitrary α) }
+@[simp] lemma pi_fst : (q.pi α).fst = const α (q.fst) := rfl
+@[simp] lemma pi_snd : (q.pi α).snd = const α (q.snd) := rfl
+end pi
+def prod : two_pointing (α × β) :=
+{ fst := (p.fst, q.fst),
+  snd := (p.snd, q.snd),
+  fst_ne_snd := λ h, p.fst_ne_snd (congr_arg prod.fst h) }
+@[simp] lemma prod_fst : (p.prod q).fst = (p.fst, q.fst) := rfl
+@[simp] lemma prod_snd : (p.prod q).snd = (p.snd, q.snd) := rfl
+protected def sum : two_pointing (α ⊕ β) := ⟨(sum.inl (p.fst), sum.inr (q.snd)), sum.inl_ne_inr⟩
+@[simp] lemma sum_fst : (p.sum q).fst = sum.inl p.fst := rfl
+@[simp] lemma sum_snd : (p.sum q).snd = sum.inr q.snd := rfl
+protected def bool : two_pointing bool := ⟨(ff, tt), bool.ff_ne_tt⟩
+@[simp] lemma bool_fst : two_pointing.bool.fst = ff := rfl
+@[simp] lemma bool_snd : two_pointing.bool.snd = tt := rfl
+instance : inhabited (two_pointing bool) := ⟨two_pointing.bool⟩
+protected def «Prop» : two_pointing Prop := ⟨(false, true), false_ne_true⟩
+@[simp] lemma Prop_fst : two_pointing.Prop.fst = false := rfl
+@[simp] lemma Prop_snd : two_pointing.Prop.snd = true := rfl
+end two_pointing

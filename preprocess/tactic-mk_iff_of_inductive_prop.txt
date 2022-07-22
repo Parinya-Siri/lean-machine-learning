@@ -1,0 +1,89 @@
+import tactic.core
+import tactic.lint
+open tactic expr
+namespace mk_iff
+meta def select : ℕ → ℕ → tactic unit
+| 0 0             := skip
+| 0 (n + 1)       := left >> skip
+| (m + 1) (n + 1) := right >> select m n
+| (n + 1) 0       := failure
+meta def compact_relation :
+  list expr → list (expr × expr) → list (option expr) × list (expr × expr)
+| []        ps := ([], ps)
+| (b :: bs) ps :=
+  match ps.span (λap:expr × expr, ¬ ap.2 =ₐ b) with
+    | (_, [])              := let (bs, ps) := compact_relation bs ps in (b::bs, ps)
+    | (ps₁, (a, _) :: ps₂) :=
+      let i := a.instantiate_local b.local_uniq_name,
+        (bs, ps) := compact_relation (bs.map i) ((ps₁ ++ ps₂).map (λ⟨a, p⟩, (a, i p)))
+      in (none :: bs, ps)
+  end
+def list_option_merge {α : Type*} {β : Type*} : list (option α) → list β → list (option β)
+| [] _ := []
+| (none :: xs) ys := none :: list_option_merge xs ys
+| (some _ :: xs) (y :: ys) := some y :: list_option_merge xs ys
+| (some _ :: xs) [] := []
+      revert_lst es,
+      es.mmap' (λ_, intro1 >>= subst)
+    end,
+    ctxt ← local_context,
+    let gs := ctxt.take gs.length,
+    let hs := (ctxt.reverse.take n).reverse,
+    let m := gs.map some ++ list_option_merge bs hs,
+    args ← m.mmap (λa, match a with some v := return v | none := mk_mvar end),
+    c ← mk_const constr_name,
+    exact (c.mk_app args),
+    done),
+  done
+end
+end mk_iff
+namespace tactic
+open mk_iff
+meta def mk_iff_of_inductive_prop (i : name) (r : name) : tactic unit :=
+do e ← get_env,
+  guard (e.is_inductive i),
+  let constrs := e.constructors_of i,
+  let params := e.inductive_num_params i,
+  let indices := e.inductive_num_indices i,
+  let rec := match e.recursor_of i with
+    | some rec := rec
+    | none := i.append `rec
+    end,
+  decl ← get_decl i,
+  let type := decl.type,
+  let univ_names := decl.univ_params,
+  let univs := univ_names.map level.param,
+  (g, `(Prop)) ← open_pis type | fail "Inductive type is not a proposition",
+  let lhs := (const i univs).mk_app g,
+  shape_rhss ← constrs.mmap (constr_to_prop univs (g.take params) (g.drop params)),
+  let shape := shape_rhss.map prod.fst,
+  let rhss := shape_rhss.map prod.snd,
+  add_theorem_by r univ_names ((mk_iff lhs (mk_or_lst rhss)).pis g) (do
+    gs ← intro_lst (g.map local_pp_name),
+    split,
+    focus' [to_cases shape, intro1 >>= to_inductive constrs (gs.take params) shape]),
+  skip
+end tactic
+section
+setup_tactic_parser
+@[user_command] meta def mk_iff_of_inductive_prop_cmd (_ : parse (tk "mk_iff_of_inductive_prop")) :
+  parser unit :=
+do i ← ident, r ← ident, tactic.mk_iff_of_inductive_prop i r
+add_tactic_doc
+{ name        := "mk_iff_of_inductive_prop",
+  category    := doc_category.cmd,
+  decl_names  := [``mk_iff_of_inductive_prop_cmd],
+  tags        := ["logic", "environment"] }
+@[user_attribute] meta def mk_iff_attr : user_attribute unit (option name) :=
+{ name := `mk_iff,
+  descr := "Generate an `iff` lemma for an inductive `Prop`.",
+  parser := ident?,
+  after_set := some $ λ n _ _, do
+    tgt ← mk_iff_attr.get_param n,
+    tactic.mk_iff_of_inductive_prop n (tgt.get_or_else (n.append_suffix "_iff")) }
+add_tactic_doc
+{ name        := "mk_iff",
+  category    := doc_category.attr,
+  decl_names  := [`mk_iff_attr],
+  tags        := ["logic", "environment"] }
+end

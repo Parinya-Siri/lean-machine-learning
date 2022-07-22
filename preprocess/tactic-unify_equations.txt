@@ -1,0 +1,134 @@
+import tactic.core
+open expr
+namespace tactic
+namespace unify_equations
+meta inductive unification_step_result : Type
+| simplified (next_equations : list name)
+| not_simplified
+| goal_solved
+export unification_step_result
+@[reducible] meta def unification_step : Type :=
+∀ (equ lhs_type rhs_type lhs rhs lhs_whnf rhs_whnf : expr) (u : level),
+  tactic unification_step_result
+meta def unify_heterogeneous : unification_step :=
+λ equ lhs_type rhs_type lhs rhs _ _ _,
+do
+{ is_def_eq lhs_type rhs_type,
+  p ← to_expr ``(@eq_of_heq %%lhs_type %%lhs %%rhs %%equ),
+  t ← to_expr ``(@eq %%lhs_type %%lhs %%rhs),
+  equ' ← note equ.local_pp_name t p,
+  clear equ,
+  pure $ simplified [equ'.local_pp_name] } <|>
+pure not_simplified
+meta def unify_defeq : unification_step :=
+λ equ lhs_type _ _ _ lhs_whnf rhs_whnf _,
+do
+{ is_def_eq lhs_whnf rhs_whnf,
+  clear equ,
+  pure $ simplified [] } <|>
+pure not_simplified
+meta def unify_var : unification_step :=
+λ equ type _ lhs rhs lhs_whnf rhs_whnf u,
+do
+{ let lhs_is_local := lhs_whnf.is_local_constant,
+  let rhs_is_local := rhs_whnf.is_local_constant,
+  guard $ lhs_is_local ∨ rhs_is_local,
+  let t :=
+    if lhs_is_local
+      then (const `eq [u]) type lhs_whnf rhs
+      else (const `eq [u]) type lhs rhs_whnf,
+  change_core t (some equ),
+  equ ← get_local equ.local_pp_name,
+  subst_core equ,
+  pure $ simplified [] } <|>
+pure not_simplified
+meta def unify_constructor_headed : unification_step :=
+λ equ _ _ _ _ _ _ _,
+do
+{ (next, _) ← injection_with' equ [] `_ none,
+  try $ clear equ,
+  pure $
+    match next with
+    | none := goal_solved
+    | some next := simplified $ next.map expr.local_pp_name
+    end } <|>
+pure not_simplified
+meta def get_sizeof (type : expr) : tactic pexpr := do
+  n ← get_app_fn_const_whnf type semireducible ff,
+  resolve_name $ n ++ `sizeof
+lemma add_add_one_ne (n m : ℕ) : n + (m + 1) ≠ n :=
+begin
+  apply ne_of_gt,
+  apply nat.lt_add_of_pos_right,
+  apply nat.pos_of_ne_zero,
+  contradiction
+end
+meta def match_n_plus_m (md) : ℕ → expr → tactic (ℕ × expr) :=
+λ n e, do
+  e ← whnf e md,
+  match e with
+  | `(nat.succ %%e) := match_n_plus_m (n + 1) e
+  | _ := pure (n, e)
+  end
+meta def contradict_n_eq_n_plus_m (md : transparency) (equ lhs rhs : expr) :
+  tactic expr := do
+  ⟨lhs_n, lhs_e⟩ ← match_n_plus_m md 0 lhs,
+  ⟨rhs_n, rhs_e⟩ ← match_n_plus_m md 0 rhs,
+  is_def_eq lhs_e rhs_e md <|> fail
+    ("contradict_n_eq_n_plus_m:\nexpected {lhs_e} and {rhs_e} to be definitionally " ++
+    "equal at transparency {md}."),
+  let common := lhs_e,
+  guard (lhs_n ≠ rhs_n) <|> fail
+    "contradict_n_eq_n_plus_m:\nexpected {lhs_n} and {rhs_n} to be different.",
+meta def unify_cyclic : unification_step :=
+λ equ type _ _ _ lhs_whnf rhs_whnf _,
+do
+meta def orelse_step (s t : unification_step) : unification_step :=
+λ equ lhs_type rhs_type lhs rhs lhs_whnf rhs_whnf u,
+do
+  r ← s equ lhs_type rhs_type lhs rhs lhs_whnf rhs_whnf u,
+  match r with
+  | simplified _ := pure r
+  | goal_solved := pure r
+  | not_simplified := t equ lhs_type rhs_type lhs rhs lhs_whnf rhs_whnf u
+  end
+meta def unify_homogeneous : unification_step :=
+list.foldl orelse_step (λ _ _ _ _ _ _ _ _, pure not_simplified)
+  [unify_defeq, unify_var, unify_constructor_headed, unify_cyclic]
+end unify_equations
+open unify_equations
+meta def unify_equation_once (equ : name) : tactic unification_step_result := do
+  eque ← get_local equ,
+  t ← infer_type eque,
+  match t with
+  | (app (app (app (const `eq [u]) type) lhs) rhs) := do
+    lhs_whnf ← whnf_ginductive lhs,
+    rhs_whnf ← whnf_ginductive rhs,
+    unify_homogeneous eque type type lhs rhs lhs_whnf rhs_whnf u
+  | (app (app (app (app (const `heq [u]) lhs_type) lhs) rhs_type) rhs) := do
+    lhs_whnf ← whnf_ginductive lhs,
+    rhs_whnf ← whnf_ginductive rhs,
+    unify_heterogeneous eque lhs_type rhs_type lhs rhs lhs_whnf rhs_whnf u
+  | _ := fail! "Expected {equ} to be an equation, but its type is\n{t}."
+  end
+meta def unify_equations : list name → tactic bool
+| [] := pure ff
+| (h :: hs) := do
+  res ← unify_equation_once h,
+  match res with
+  | simplified hs' := unify_equations $ hs' ++ hs
+  | not_simplified := unify_equations hs
+  | goal_solved := pure tt
+  end
+namespace interactive
+open lean.parser
+meta def unify_equations (eqs : interactive.parse (many ident)) :
+  tactic unit :=
+tactic.unify_equations eqs *> skip
+add_tactic_doc
+{ name := "unify_equations",
+  category := doc_category.tactic,
+  decl_names := [`tactic.interactive.unify_equations],
+  tags := ["simplification"] }
+end interactive
+end tactic

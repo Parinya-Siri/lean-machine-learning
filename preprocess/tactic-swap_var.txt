@@ -1,0 +1,12 @@
+import tactic.interactive
+namespace tactic.interactive
+setup_tactic_parser
+private meta def swap_arg_parser : lean.parser (name × name) :=
+  prod.mk <$> ident <*> (optional (tk "<->" <|> tk "↔") *> ident)
+private meta def swap_args_parser : lean.parser (list (name × name)) :=
+  (functor.map (λ x, [x]) swap_arg_parser)
+  <|>
+  (tk "[" *> sep_by (tk ",") swap_arg_parser <* tk "]")
+meta def swap_var (renames : parse swap_args_parser) : tactic unit := do
+  renames.mmap' (λ e, do
+    n ← tactic.get_unused_name,

@@ -1,0 +1,9 @@
+import tactic.core
+namespace tactic.interactive
+open interactive interactive.types tactic
+meta def simp_rw (q : parse rw_rules) (l : parse location) : tactic unit :=
+q.rules.mmap' (λ rule, do
+  let simp_arg := if rule.symm
+    then simp_arg_type.symm_expr rule.rule
+    else simp_arg_type.expr rule.rule,
+  save_info rule.pos,

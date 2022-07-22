@@ -1,0 +1,63 @@
+import topology.subset_properties
+import topology.separation
+import data.option.basic
+open set filter function
+open_locale filter topological_space
+universes u v
+class paracompact_space (X : Type v) [topological_space X] : Prop :=
+(locally_finite_refinement :
+  ∀ (α : Type v) (s : α → set X) (ho : ∀ a, is_open (s a)) (hc : (⋃ a, s a) = univ),
+  ∃ (β : Type v) (t : β → set X) (ho : ∀ b, is_open (t b)) (hc : (⋃ b, t b) = univ),
+    locally_finite t ∧ ∀ b, ∃ a, t b ⊆ s a)
+variables {ι : Type u} {X : Type v} [topological_space X]
+lemma precise_refinement [paracompact_space X] (u : ι → set X) (uo : ∀ a, is_open (u a))
+  (uc : (⋃ i, u i) = univ) :
+  ∃ v : ι → set X, (∀ a, is_open (v a)) ∧ (⋃ i, v i) = univ ∧ locally_finite v ∧ (∀ a, v a ⊆ u a) :=
+begin
+lemma precise_refinement_set [paracompact_space X] {s : set X} (hs : is_closed s)
+  (u : ι → set X) (uo : ∀ i, is_open (u i)) (us : s ⊆ ⋃ i, u i) :
+  ∃ v : ι → set X, (∀ i, is_open (v i)) ∧ (s ⊆ ⋃ i, v i) ∧ locally_finite v ∧ (∀ i, v i ⊆ u i) :=
+begin
+  rcases precise_refinement (option.elim sᶜ u)
+    (option.forall.2 ⟨is_open_compl_iff.2 hs, uo⟩) _ with ⟨v, vo, vc, vf, vu⟩,
+  refine ⟨v ∘ some, λ i, vo _, _, vf.comp_injective (option.some_injective _), λ i, vu _⟩,
+  { simp only [Union_option, ← compl_subset_iff_union] at vc,
+    exact subset.trans (subset_compl_comm.1 $ vu option.none) vc },
+  { simpa only [Union_option, option.elim, ← compl_subset_iff_union, compl_compl] }
+end
+theorem refinement_of_locally_compact_sigma_compact_of_nhds_basis_set
+  [locally_compact_space X] [sigma_compact_space X] [t2_space X]
+  {ι : X → Type u} {p : Π x, ι x → Prop} {B : Π x, ι x → set X} {s : set X}
+  (hs : is_closed s) (hB : ∀ x ∈ s, (𝓝 x).has_basis (p x) (B x)) :
+  ∃ (α : Type v) (c : α → X) (r : Π a, ι (c a)), (∀ a, c a ∈ s ∧ p (c a) (r a)) ∧
+    (s ⊆ ⋃ a, B (c a) (r a)) ∧ locally_finite (λ a, B (c a) (r a)) :=
+begin
+  classical,
+theorem refinement_of_locally_compact_sigma_compact_of_nhds_basis
+  [locally_compact_space X] [sigma_compact_space X] [t2_space X]
+  {ι : X → Type u} {p : Π x, ι x → Prop} {B : Π x, ι x → set X}
+  (hB : ∀ x, (𝓝 x).has_basis (p x) (B x)) :
+  ∃ (α : Type v) (c : α → X) (r : Π a, ι (c a)), (∀ a, p (c a) (r a)) ∧
+    (⋃ a, B (c a) (r a)) = univ ∧ locally_finite (λ a, B (c a) (r a)) :=
+let ⟨α, c, r, hp, hU, hfin⟩ := refinement_of_locally_compact_sigma_compact_of_nhds_basis_set
+  is_closed_univ (λ x _, hB x)
+in ⟨α, c, r, λ a, (hp a).2, univ_subset_iff.1 hU, hfin⟩
+lemma normal_of_paracompact_t2 [t2_space X] [paracompact_space X] : normal_space X :=
+begin
+  have : ∀ (s t : set X), is_closed s → is_closed t →
+    (∀ x ∈ s, ∃ u v, is_open u ∧ is_open v ∧ x ∈ u ∧ t ⊆ v ∧ disjoint u v) →
+    ∃ u v, is_open u ∧ is_open v ∧ s ⊆ u ∧ t ⊆ v ∧ disjoint u v,
+    intros s t hs ht H, choose u v hu hv hxu htv huv using set_coe.forall'.1 H,
+    rcases precise_refinement_set hs u hu (λ x hx, mem_Union.2 ⟨⟨x, hx⟩, hxu _⟩)
+      with ⟨u', hu'o, hcov', hu'fin, hsub⟩,
+    refine ⟨⋃ i, u' i, (closure (⋃ i, u' i))ᶜ, is_open_Union hu'o, is_closed_closure.is_open_compl,
+      hcov', _, disjoint_compl_right.mono le_rfl (compl_le_compl subset_closure)⟩,
+    rw [hu'fin.closure_Union, compl_Union, subset_Inter_iff],
+    refine λ i x hxt hxu, absurd (htv i hxt) (closure_minimal _ (is_closed_compl_iff.2 $ hv _) hxu),
+    exact λ y hyu hyv, huv i ⟨hsub _ hyu, hyv⟩ },
+  refine ⟨λ s t hs ht hst, this s t hs ht (λ x hx, _)⟩,
+  rcases this t {x} ht is_closed_singleton (λ y hy, _) with ⟨v, u, hv, hu, htv, hxu, huv⟩,
+  { exact ⟨u, v, hu, hv, singleton_subset_iff.1 hxu, htv, huv.symm⟩ },
+  { simp_rw singleton_subset_iff,
+    exact t2_separation (hst.symm.ne_of_mem hy hx) }
+end

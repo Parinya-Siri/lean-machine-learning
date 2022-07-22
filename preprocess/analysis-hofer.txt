@@ -1,0 +1,17 @@
+import analysis.specific_limits.basic
+open_locale classical topological_space big_operators
+open filter finset
+local notation `d` := dist
+lemma hofer {X: Type*} [metric_space X] [complete_space X]
+  (x : X) (ε : ℝ) (ε_pos : 0 < ε)
+  {ϕ : X → ℝ} (cont : continuous ϕ) (nonneg : ∀ y, 0 ≤ ϕ y) :
+  ∃ (ε' > 0) (x' : X), ε' ≤ ε ∧
+                       d x' x ≤ 2*ε ∧
+                       ε * ϕ(x) ≤ ε' * ϕ x' ∧
+                       ∀ y, d x' y ≤ ε' → ϕ y ≤ 2*ϕ x' :=
+begin
+  by_contradiction H,
+  have reformulation : ∀ x' (k : ℕ), ε * ϕ x ≤ ε / 2 ^ k * ϕ x' ↔ 2^k * ϕ x ≤ ϕ x',
+  { intros x' k,
+    rw [div_mul_eq_mul_div, le_div_iff, mul_assoc, mul_le_mul_left ε_pos, mul_comm],
+    exact pow_pos (by norm_num) k, },

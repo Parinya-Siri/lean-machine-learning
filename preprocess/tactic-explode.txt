@@ -1,0 +1,91 @@
+import meta.rb_map
+import tactic.core
+open expr tactic
+namespace tactic
+namespace explode
+@[derive inhabited]
+inductive status : Type | reg | intro | lam | sintro
+meta inductive thm : Type
+| expr (e : expr)
+| name (n : name)
+| string (s : string)
+meta def thm.to_string : thm → string
+| (thm.expr e) := e.to_string
+| (thm.name n) := n.to_string
+| (thm.string s) := s
+meta structure entry : Type :=
+(expr : expr)
+(line : nat)
+(depth : nat)
+(status : status)
+(thm : thm)
+(deps : list nat)
+meta def pad_right (l : list string) : list string :=
+let n := l.foldl (λ r (s:string), max r s.length) 0 in
+l.map $ λ s, nat.iterate (λ s, s.push ' ') (n - s.length) s
+@[derive inhabited]
+meta structure entries : Type := mk' ::
+(s : expr_map entry)
+(l : list entry)
+meta def entries.find (es : entries) (e : expr) : option entry := es.s.find e
+meta def entries.size (es : entries) : ℕ := es.s.size
+meta def entries.add : entries → entry → entries
+| es@⟨s, l⟩ e := if s.contains e.expr then es else ⟨s.insert e.expr e, e :: l⟩
+meta def entries.head (es : entries) : option entry := es.l.head'
+meta def format_aux : list string → list string → list string → list entry → tactic format
+| (line :: lines) (dep :: deps) (thm :: thms) (en :: es) := do
+  fmt ← do
+  { let margin := string.join (list.repeat " │" en.depth),
+    let margin := match en.status with
+      | status.sintro := " ├" ++ margin
+      | status.intro := " │" ++ margin ++ " ┌"
+      | status.reg := " │" ++ margin ++ ""
+      | status.lam := " │" ++ margin ++ ""
+      end,
+    p ← infer_type en.expr >>= pp,
+    let lhs :=  line ++ "│" ++ dep ++ "│ " ++ thm ++ margin ++ " ",
+    return $ format.of_string lhs ++ (p.nest lhs.length).group ++ format.line },
+  (++ fmt) <$> format_aux lines deps thms es
+| _ _ _ _ := return format.nil
+meta instance : has_to_tactic_format entries :=
+⟨λ es : entries,
+  let lines := pad_right $ es.l.map (λ en, to_string en.line),
+      deps  := pad_right $ es.l.map (λ en, string.intercalate "," (en.deps.map to_string)),
+      thms  := pad_right $ es.l.map (λ en, (entry.thm en).to_string) in
+  format_aux lines deps thms es.l⟩
+meta def append_dep (filter : expr → tactic unit)
+ (es : entries) (e : expr) (deps : list nat) : tactic (list nat) :=
+do { ei ← es.find e,
+  filter ei.expr,
+  return (ei.line :: deps) }
+<|> return deps
+meta def may_be_proof (e : expr) : tactic bool :=
+do expr.sort u ← infer_type e >>= infer_type,
+   return $ bnot u.nonzero
+end explode
+open explode
+meta mutual def explode.core, explode.args (filter : expr → tactic unit)
+with explode.core : expr → bool → nat → entries → tactic entries
+| e@(lam n bi d b) si depth es := do
+  m ← mk_fresh_name,
+  let l := local_const m n bi d,
+  let b' := instantiate_var b l,
+  if si then
+    let en : entry := ⟨l, es.size, depth, status.sintro, thm.name n, []⟩ in do
+    es' ← explode.core b' si depth (es.add en),
+    return $ es'.add ⟨e, es'.size, depth, status.lam, thm.string "∀I", [es.size, es'.size - 1]⟩
+  else do
+    let en : entry := ⟨l, es.size, depth, status.intro, thm.name n, []⟩,
+    es' ← explode.core b' si (depth + 1) (es.add en),
+@[user_command]
+meta def explode_cmd (_ : parse $ tk "#explode") : parser unit :=
+do n ← ident,
+  explode n
+.
+add_tactic_doc
+{ name       := "#explode / #explode_widget",
+  category   := doc_category.cmd,
+  decl_names := [`tactic.explode_cmd, `tactic.explode_widget_cmd],
+  inherit_description_from := `tactic.explode_cmd,
+  tags       := ["proof display", "widgets"] }
+end tactic

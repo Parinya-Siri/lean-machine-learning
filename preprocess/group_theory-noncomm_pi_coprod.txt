@@ -1,0 +1,102 @@
+import group_theory.order_of_element
+import data.finset.noncomm_prod
+import data.fintype.card
+open_locale big_operators
+section family_of_monoids
+variables {M : Type*} [monoid M]
+@[to_additive "The canonical homomorphism from a family of additive monoids.
+See also `linear_map.lsum` for a linear version without the commutativity assumption."]
+def noncomm_pi_coprod : (Π (i : ι), N i) →* M :=
+{ to_fun := λ f, finset.univ.noncomm_prod (λ i, ϕ i (f i)) $
+    by { rintros i - j -, by_cases h : i = j, { subst h }, { exact hcomm _ _ h _ _ } },
+  map_one' := by {apply (finset.noncomm_prod_eq_pow_card _ _ _ _ _).trans (one_pow _), simp},
+  map_mul' := λ f g,
+  begin
+    classical,
+    convert @finset.noncomm_prod_mul_distrib _ _ _ _ (λ i, ϕ i (f i)) (λ i, ϕ i (g i)) _ _ _,
+    { ext i, exact map_mul (ϕ i) (f i) (g i), },
+    { rintros i - j - h, exact hcomm _ _ h _ _ },
+  end }
+variable {hcomm}
+include hdec
+@[simp, to_additive]
+lemma noncomm_pi_coprod_mul_single (i : ι) (y : N i):
+  noncomm_pi_coprod ϕ hcomm (pi.mul_single i y) = ϕ i y :=
+begin
+  change finset.univ.noncomm_prod (λ j, ϕ j (pi.mul_single i y j)) _ = ϕ i y,
+  simp only [←finset.insert_erase (finset.mem_univ i)] {single_pass := tt},
+  rw finset.noncomm_prod_insert_of_not_mem _ _ _ _ (finset.not_mem_erase i _),
+  rw pi.mul_single_eq_same,
+  rw finset.noncomm_prod_eq_pow_card,
+  { rw one_pow, exact mul_one _  },
+  { intros j hj, simp only [finset.mem_erase] at hj, simp [hj], },
+end
+omit hcomm
+@[to_additive "The universal property of `noncomm_pi_coprod`"]
+def noncomm_pi_coprod_equiv :
+  {ϕ : Π i, N i →* M // pairwise (λ i j, ∀ x y, commute (ϕ i x) (ϕ j y)) }
+    ≃ ((Π i, N i) →* M) :=
+{ to_fun := λ ϕ, noncomm_pi_coprod ϕ.1 ϕ.2,
+  inv_fun := λ f,
+  ⟨ λ i, f.comp (monoid_hom.single N i),
+    λ i j hij x y, commute.map (pi.mul_single_commute i j hij x y) f ⟩,
+  left_inv := λ ϕ, by { ext, simp, },
+  right_inv := λ f, pi_ext (λ i x, by simp) }
+omit hdec
+include hcomm
+@[to_additive]
+lemma noncomm_pi_coprod_mrange : (noncomm_pi_coprod ϕ hcomm).mrange = ⨆ i : ι, (ϕ i).mrange :=
+begin
+  classical,
+  apply le_antisymm,
+  { rintro x ⟨f, rfl⟩,
+    refine submonoid.noncomm_prod_mem _ _ _ _ _,
+    intros i hi,
+    apply submonoid.mem_Sup_of_mem, { use i },
+    simp, },
+  { refine supr_le _,
+    rintro i x ⟨y, rfl⟩,
+    refine ⟨pi.mul_single i y, noncomm_pi_coprod_mul_single _ _ _⟩, },
+end
+end monoid_hom
+end family_of_monoids
+section family_of_groups
+variables {G : Type*} [group G]
+variables {ι : Type*} [hdec : decidable_eq ι] [hfin : fintype ι]
+variables {H : ι → Type*} [∀ i, group (H i)]
+variables (ϕ : Π (i : ι), H i →* G)
+variables {hcomm : ∀ (i j : ι), i ≠ j → ∀ (x : H i) (y : H j), commute (ϕ i x) (ϕ j y)}
+include hcomm
+@[to_additive "The canonical homomorphism from a family of additive subgroups where elements from
+different subgroups commute"]
+def noncomm_pi_coprod : (Π (i : ι), H i) →* G :=
+  monoid_hom.noncomm_pi_coprod (λ i, (H i).subtype) (commute_subtype_of_commute hcomm)
+variable {hcomm}
+include hdec
+@[simp, to_additive]
+lemma noncomm_pi_coprod_mul_single (i : ι) (y : H i) :
+  noncomm_pi_coprod hcomm (pi.mul_single i y) = y :=
+by apply monoid_hom.noncomm_pi_coprod_mul_single
+omit hdec
+@[to_additive]
+lemma noncomm_pi_coprod_range : (noncomm_pi_coprod hcomm).range = ⨆ i : ι, H i :=
+by simp [noncomm_pi_coprod, monoid_hom.noncomm_pi_coprod_range]
+@[to_additive]
+lemma injective_noncomm_pi_coprod_of_independent (hind : complete_lattice.independent H) :
+  function.injective (noncomm_pi_coprod hcomm) :=
+begin
+  apply monoid_hom.injective_noncomm_pi_coprod_of_independent,
+  { simpa using hind },
+  { intro i, exact subtype.coe_injective }
+end
+variable (hcomm)
+@[to_additive]
+lemma independent_of_coprime_order [∀ i, fintype (H i)]
+  (hcoprime : ∀ i j, i ≠ j → nat.coprime (fintype.card (H i)) (fintype.card (H j))) :
+  complete_lattice.independent H :=
+begin
+  simpa using monoid_hom.independent_range_of_coprime_order
+    (λ i, (H i).subtype) (commute_subtype_of_commute hcomm) hcoprime,
+end
+end commuting_subgroups
+end subgroup

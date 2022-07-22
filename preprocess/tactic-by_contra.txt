@@ -1,0 +1,11 @@
+import tactic.core
+import tactic.push_neg
+namespace tactic
+namespace interactive
+setup_tactic_parser
+meta def by_contra' (h : parse ident?) (t : parse (tk ":" *> texpr)?) : tactic unit := do
+  let h := h.get_or_else `this,
+  tgt ← target,
+  mk_mapp `classical.by_contradiction [some tgt] >>= tactic.eapply,
+  h₁ ← tactic.intro h,
+  t' ← infer_type h₁,

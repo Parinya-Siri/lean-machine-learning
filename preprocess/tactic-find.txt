@@ -1,0 +1,32 @@
+import tactic.core
+open expr
+open interactive
+open lean.parser
+open tactic
+private meta def match_subexpr (p : pattern) : expr → tactic (list expr)
+| e := prod.snd <$> match_pattern p e <|>
+  match e with
+  | app e₁ e₂ := match_subexpr e₁ <|> match_subexpr e₂
+  | pi _ _ _ b := mk_fresh_name >>= match_subexpr ∘ b.instantiate_var ∘ mk_local
+  | lam _ _ _ b := mk_fresh_name >>= match_subexpr ∘ b.instantiate_var ∘ mk_local
+  | _ := failed
+  end
+private meta def match_exact : pexpr → expr → tactic (list expr)
+| p e :=
+do (app p₁ p₂) ← pure p | match_expr p e,
+   if pexpr.is_placeholder p₁ then
+@[user_command]
+meta def find_cmd (_ : parse $ tk "#find") : lean.parser unit :=
+do pat ← lean.parser.pexpr 0,
+   env ← get_env,
+   env.mfold () $ λ d _,
+     match d with
+     | declaration.thm n _ ty _ := trace_match pat ty n
+     | declaration.defn n _ ty _ _ _ := trace_match pat ty n
+     | _ := skip
+     end
+add_tactic_doc
+{ name                     := "#find",
+  category                 := doc_category.cmd,
+  decl_names               := [`find_cmd],
+  tags                     := ["search"] }

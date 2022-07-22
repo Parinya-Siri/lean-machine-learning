@@ -1,0 +1,65 @@
+import data.int.basic
+import algebra.group_power.lemmas
+import category_theory.pi.basic
+import category_theory.shift
+import category_theory.concrete_category.basic
+open category_theory.pi
+open category_theory.limits
+namespace category_theory
+universes w v u
+def graded_object (β : Type w) (C : Type u) : Type (max w u) := β → C
+@[simps] def eval {β : Type w} (b : β) : graded_object β C ⥤ C :=
+{ obj := λ X, X b,
+  map := λ X Y f, f b, }
+section
+variable (C)
+@[simps]
+def comap_eq {β γ : Type w} {f g : β → γ} (h : f = g) : comap (λ _, C) f ≅ comap (λ _, C) g :=
+{ hom := { app := λ X b, eq_to_hom begin dsimp [comap], subst h, end },
+  inv := { app := λ X b, eq_to_hom begin dsimp [comap], subst h, end }, }
+lemma comap_eq_symm {β γ : Type w} {f g : β → γ} (h : f = g) :
+  comap_eq C h.symm = (comap_eq C h).symm :=
+by tidy
+lemma comap_eq_trans {β γ : Type w} {f g h : β → γ} (k : f = g) (l : g = h) :
+  comap_eq C (k.trans l) = comap_eq C k ≪≫ comap_eq C l :=
+begin
+  ext X b,
+  simp,
+end
+@[simp] lemma eq_to_hom_apply {β : Type w} {X Y : Π b : β, C} (h : X = Y) (b : β) :
+  (eq_to_hom h : X ⟶ Y) b = eq_to_hom (by subst h) :=
+by { subst h, refl }
+@[simps]
+def comap_equiv {β γ : Type w} (e : β ≃ γ) :
+  (graded_object β C) ≌ (graded_object γ C) :=
+{ functor := comap (λ _, C) (e.symm : γ → β),
+  inverse := comap (λ _, C) (e : β → γ),
+  counit_iso := (comap_comp (λ _, C) _ _).trans (comap_eq C (by { ext, simp } )),
+  unit_iso := (comap_eq C (by { ext, simp } )).trans (comap_comp _ _ _).symm,
+noncomputable def total : graded_object β C ⥤ C :=
+{ obj := λ X, ∐ (λ i : β, X i),
+  map := λ X Y f, limits.sigma.map (λ i, f i) }.
+end
+variables [has_zero_morphisms C]
+instance : faithful (total β C) :=
+{ map_injective' := λ X Y f g w,
+  begin
+    classical,
+    ext i,
+    replace w := sigma.ι (λ i : β, X i) i ≫= w,
+    erw [colimit.ι_map, colimit.ι_map] at w,
+    simp at *,
+    exact mono.right_cancellation _ _ w,
+  end }
+end graded_object
+namespace graded_object
+noncomputable theory
+variables (β : Type)
+variables (C : Type (u+1)) [large_category C] [concrete_category C]
+  [has_coproducts.{0} C] [has_zero_morphisms C]
+instance : concrete_category (graded_object β C) :=
+{ forget := total β C ⋙ forget C }
+instance : has_forget₂ (graded_object β C) C :=
+{ forget₂ := total β C }
+end graded_object
+end category_theory

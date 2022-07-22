@@ -1,0 +1,12 @@
+import tactic.interactive
+open tactic.interactive
+setup_tactic_parser
+meta def tactic.interactive.dec_trivial (revert_deps : parse (tk "!")?) : tactic unit :=
+if revert_deps.is_some
+then revert_target_deps; tactic.exact_dec_trivial
+else tactic.exact_dec_trivial
+add_tactic_doc
+{ name       := "dec_trivial",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.dec_trivial],
+  tags       := ["basic", "finishing"] }
