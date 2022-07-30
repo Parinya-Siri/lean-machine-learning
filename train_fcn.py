@@ -52,8 +52,9 @@ for epoch in range(EPOCHS):
             loss = F.mse_loss(output, y)
             loss.backward()
             optimizer.step()
+        loss_list.append(loss.item())
     print('loss for ',epoch,' epochs : ',loss)
-    loss_list.append(loss.item())
+    
     
 ############ Save ###################
 now = datetime.now()

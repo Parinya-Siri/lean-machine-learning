@@ -1,5 +1,6 @@
 import os , glob
 import utilities.utilities as util
+import neuralnetwork.fcn as fcn
 
 ### Path #####
 data_path = './matlib'
@@ -9,7 +10,7 @@ text_path = './preprocess/bilinear.txt'
 
 #### Hyper parameter #####
 prediction_type = 0 #the type of prediction
-num_lines_predict = 10 #the number of lines for prediction
+num_lines_predict = fcn.num_lines_predict #the number of lines for prediction
 
 #### read txt files as list ######
 text = util.list_lines(text_path)

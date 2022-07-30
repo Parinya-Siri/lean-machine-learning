@@ -1,4 +1,5 @@
 import os , glob
+import matplotlib.pyplot as plt
 def preprocess(filename, preprocess_path, data_path):
     '''
     A function that create txt files from .lean files and also remove comments
@@ -101,13 +102,26 @@ def decode_text_line(text):
     return: a list of unicode for each lines with 80 chars padding
     '''
     de_text = []
+    de_round = []
     for line in text:
-        line_text = [chr(i) for i in line]
+        line_text = [round(max(0,i)) for i in line]
+        de_round.append(line_text)
+        line_text = [chr(i) for i in line_text]
         while line_text[0] == '\x00':
             del line_text[0]
         line_a = ''
         for k in line_text:
              line_a += k
         de_text.append(line_a)
-    return de_text
+    return de_text, de_round
 
+
+def plot_loss(losstxtpath):
+    '''
+    plot loss graph from text file path losstxtpath
+    '''
+    losslist = open(losstxtpath, "r").readlines()
+    losslist = [float(i.strip('\n')) for i in losslist]
+    xpoints = range(len(losslist))
+    ypoints = losslist
+    plt.plot(xpoints, ypoints)
