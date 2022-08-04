@@ -7,10 +7,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from datetime import datetime
 from tqdm import tqdm
-
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
 ############ Set the Hyper parameters ###########
 
-EPOCHS = 100
+EPOCHS = 200
 max_char = 102
 num_lines_predict = fcn.num_lines_predict
 ############ Set the Paths ######################
@@ -51,8 +52,11 @@ for epoch in range(EPOCHS):
         loss = F.mse_loss(output, y)
         loss.backward()
         optimizer.step()
+    writer.add_scalar("Loss/train", loss, epoch)
+    writer.flush()  
     print('loss for ',epoch,' epochs : ',loss)
     loss_list.append(loss.item())
+  
     
 ############ Save ###################
 now = datetime.now()
