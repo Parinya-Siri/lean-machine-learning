@@ -1,0 +1,85 @@
+import data.string.basic
+import data.buffer.basic
+import data.nat.digits
+import data.buffer.parser
+open parser parse_result
+@[simp] def parse_result.pos {α} : parse_result α → ℕ
+| (done n _) := n
+| (fail n _) := n
+namespace parser
+section defn_lemmas
+variables {α β : Type} (msgs : thunk (list string)) (msg : thunk string)
+variables (p q : parser α) (cb : char_buffer) (n n' : ℕ) {err : dlist string}
+variables {a : α} {b : β}
+class mono : Prop :=
+(le' : ∀ (cb : char_buffer) (n : ℕ), n ≤ (p cb n).pos)
+lemma mono.le [p.mono] : n ≤ (p cb n).pos := mono.le' cb n
+class static : Prop :=
+(of_done : ∀ {cb : char_buffer} {n n' : ℕ} {a : α}, p cb n = done n' a → n = n')
+class err_static : Prop :=
+(of_fail : ∀ {cb : char_buffer} {n n' : ℕ} {err : dlist string}, p cb n = fail n' err → n = n')
+class step : Prop :=
+(of_done : ∀ {cb : char_buffer} {n n' : ℕ} {a : α}, p cb n = done n' a → n' = n + 1)
+class prog : Prop :=
+(of_done : ∀ {cb : char_buffer} {n n' : ℕ} {a : α}, p cb n = done n' a → n < n')
+class bounded : Prop :=
+(ex' : ∀ {cb : char_buffer} {n : ℕ}, cb.size ≤ n → ∃ (n' : ℕ) (err : dlist string),
+  p cb n = fail n' err)
+lemma bounded.exists (p : parser α) [p.bounded] {cb : char_buffer} {n : ℕ} (h : cb.size ≤ n) :
+  ∃ (n' : ℕ) (err : dlist string), p cb n = fail n' err :=
+bounded.ex' h
+class unfailing : Prop :=
+(ex' : ∀ (cb : char_buffer) (n : ℕ), ∃ (n' : ℕ) (a : α), p cb n = done n' a)
+class conditionally_unfailing : Prop :=
+(ex' : ∀ {cb : char_buffer} {n : ℕ}, n < cb.size → ∃ (n' : ℕ) (a : α), p cb n = done n' a)
+lemma fail_iff :
+  (∀ pos' result, p cb n ≠ done pos' result) ↔
+    ∃ (pos' : ℕ) (err : dlist string), p cb n = fail pos' err :=
+by cases p cb n; simp
+lemma success_iff :
+  (∀ pos' err, p cb n ≠ fail pos' err) ↔ ∃ (pos' : ℕ) (result : α), p cb n = done pos' result :=
+by cases p cb n; simp
+variables {p q cb n n' msgs msg}
+lemma mono.of_done [p.mono] (h : p cb n = done n' a) : n ≤ n' :=
+by simpa [h] using mono.le p cb n
+lemma mono.of_fail [p.mono] (h : p cb n = fail n' err) : n ≤ n' :=
+by simpa [h] using mono.le p cb n
+lemma bounded.of_done [p.bounded] (h : p cb n = done n' a) : n < cb.size :=
+begin
+  contrapose! h,
+  obtain ⟨np, err, hp⟩ := bounded.exists p h,
+  simp [hp]
+end
+lemma static.iff :
+  static p ↔ (∀ (cb : char_buffer) (n n' : ℕ) (a : α), p cb n = done n' a → n = n') :=
+⟨λ h _ _ _ _ hp, by { haveI := h, exact static.of_done hp}, λ h, ⟨h⟩⟩
+lemma exists_done (p : parser α) [p.unfailing] (cb : char_buffer) (n : ℕ) :
+  ∃ (n' : ℕ) (a : α), p cb n = done n' a :=
+unfailing.ex' cb n
+lemma unfailing.of_fail [p.unfailing] (h : p cb n = fail n' err) : false :=
+begin
+  obtain ⟨np, a, hp⟩ := p.exists_done cb n,
+  simpa [hp] using h
+end
+lemma nat_of_done {val : ℕ} (h : nat cb n = done n' val) :
+  val = (nat.of_digits 10 ((((cb.to_list.drop n).take (n' - n)).reverse.map
+          (λ c, c.to_nat - '0'.to_nat)))) :=
+begin
+  have natm : nat._match_1 = (λ (d : ℕ) p, ⟨p.1 + d * p.2, p.2 * 10⟩),
+  { ext1, ext1 ⟨⟩, refl },
+lemma nat_of_done_as_digit {val : ℕ} (h : nat cb n = done n' val) :
+  ∀ (hn : n' ≤ cb.size) k (hk : k < n'), n ≤ k →
+    '0' ≤ cb.read ⟨k, hk.trans_le hn⟩ ∧ cb.read ⟨k, hk.trans_le hn⟩ ≤ '9' :=
+begin
+lemma nat_of_done_bounded {val : ℕ} (h : nat cb n = done n' val) :
+  ∀ (hn : n' < cb.size), '0' ≤ cb.read ⟨n', hn⟩ → '9' < cb.read ⟨n', hn⟩ :=
+begin
+lemma nat_eq_done {val : ℕ} : nat cb n = done n' val ↔ ∃ (hn : n < n'),
+  val = (nat.of_digits 10 ((((cb.to_list.drop n).take (n' - n)).reverse.map
+          (λ c, c.to_nat - '0'.to_nat)))) ∧ (∀ (hn' : n' < cb.size),
+          ('0' ≤ cb.read ⟨n', hn'⟩ → '9' < cb.read ⟨n', hn'⟩)) ∧ ∃ (hn'' : n' ≤ cb.size),
+          (∀ k (hk : k < n'), n ≤ k →
+          '0' ≤ cb.read ⟨k, hk.trans_le hn''⟩ ∧ cb.read ⟨k, hk.trans_le hn''⟩ ≤ '9') :=
+begin
+  have natm : nat._match_1 = (λ (d : ℕ) p, ⟨p.1 + d * p.2, p.2 * 10⟩),
+  { ext1, ext1 ⟨⟩, refl },

@@ -1,0 +1,88 @@
+import algebra.lie.free
+import algebra.lie.quotient
+import data.matrix.basic
+universes u v w
+noncomputable theory
+variables (R : Type u) {B : Type v} [comm_ring R] [decidable_eq B] [fintype B]
+variables (A : matrix B B ℤ)
+namespace cartan_matrix
+variables (B)
+inductive generators
+| H : B → generators
+| E : B → generators
+| F : B → generators
+instance [inhabited B] : inhabited (generators B) := ⟨generators.H default⟩
+variables {B}
+namespace relations
+open function
+local notation `H` := free_lie_algebra.of R ∘ generators.H
+local notation `E` := free_lie_algebra.of R ∘ generators.E
+local notation `F` := free_lie_algebra.of R ∘ generators.F
+local notation `ad` := lie_algebra.ad R (free_lie_algebra R (generators B))
+def HH : B × B → free_lie_algebra R (generators B) :=
+uncurry $ λ i j, ⁅H i, H j⁆
+def EF : B × B → free_lie_algebra R (generators B) :=
+uncurry $ λ i j, if i = j then ⁅E i, F i⁆ - H i else ⁅E i, F j⁆
+def HE : B × B → free_lie_algebra R (generators B) :=
+uncurry $ λ i j, ⁅H i, E j⁆ - (A i j) • E j
+def HF : B × B → free_lie_algebra R (generators B) :=
+uncurry $ λ i j, ⁅H i, F j⁆ + (A i j) • F j
+def ad_E : B × B → free_lie_algebra R (generators B) :=
+uncurry $ λ i j, (ad (E i))^(-A i j).to_nat $ ⁅E i, E j⁆
+def ad_F : B × B → free_lie_algebra R (generators B) :=
+uncurry $ λ i j, (ad (F i))^(-A i j).to_nat $ ⁅F i, F j⁆
+private lemma ad_E_of_eq_eq_zero (i : B) (h : A i i = 2) : ad_E R A ⟨i, i⟩ = 0 :=
+have h' : (-2 : ℤ).to_nat = 0, { refl, },
+by simp [ad_E, h, h']
+private lemma ad_F_of_eq_eq_zero (i : B) (h : A i i = 2) : ad_F R A ⟨i, i⟩ = 0 :=
+have h' : (-2 : ℤ).to_nat = 0, { refl, },
+by simp [ad_F, h, h']
+def to_set : set (free_lie_algebra R (generators B)) :=
+(set.range $ HH R) ∪
+(set.range $ EF R) ∪
+(set.range $ HE R A) ∪
+(set.range $ HF R A) ∪
+(set.range $ ad_E R A) ∪
+(set.range $ ad_F R A)
+def to_ideal : lie_ideal R (free_lie_algebra R (generators B)) :=
+lie_submodule.lie_span R _ $ to_set R A
+end relations
+end cartan_matrix
+@[derive [inhabited, lie_ring, lie_algebra R]]
+def matrix.to_lie_algebra := free_lie_algebra R _ ⧸ cartan_matrix.relations.to_ideal R A
+namespace cartan_matrix
+def E₆ : matrix (fin 6) (fin 6) ℤ := ![![ 2,  0, -1,  0,  0,  0],
+                                       ![ 0,  2,  0, -1,  0,  0],
+                                       ![-1,  0,  2, -1,  0,  0],
+                                       ![ 0, -1, -1,  2, -1,  0],
+                                       ![ 0,  0,  0, -1,  2, -1],
+                                       ![ 0,  0,  0,  0, -1,  2]]
+def E₇ : matrix (fin 7) (fin 7) ℤ := ![![ 2,  0, -1,  0,  0,  0,  0],
+                                       ![ 0,  2,  0, -1,  0,  0,  0],
+                                       ![-1,  0,  2, -1,  0,  0,  0],
+                                       ![ 0, -1, -1,  2, -1,  0,  0],
+                                       ![ 0,  0,  0, -1,  2, -1,  0],
+                                       ![ 0,  0,  0,  0, -1,  2, -1],
+                                       ![ 0,  0,  0,  0,  0, -1,  2]]
+def E₈ : matrix (fin 8) (fin 8) ℤ := ![![ 2,  0, -1,  0,  0,  0,  0,  0],
+                                       ![ 0,  2,  0, -1,  0,  0,  0,  0],
+                                       ![-1,  0,  2, -1,  0,  0,  0,  0],
+                                       ![ 0, -1, -1,  2, -1,  0,  0,  0],
+                                       ![ 0,  0,  0, -1,  2, -1,  0,  0],
+                                       ![ 0,  0,  0,  0, -1,  2, -1,  0],
+                                       ![ 0,  0,  0,  0,  0, -1,  2, -1],
+                                       ![ 0,  0,  0,  0,  0,  0, -1,  2]]
+def F₄ : matrix (fin 4) (fin 4) ℤ := ![![ 2, -1,  0,  0],
+                                       ![-1,  2, -2,  0],
+                                       ![ 0, -1,  2, -1],
+                                       ![ 0,  0, -1,  2]]
+def G₂ : matrix (fin 2) (fin 2) ℤ := ![![ 2, -3],
+                                       ![-1,  2]]
+end cartan_matrix
+namespace lie_algebra
+abbreviation e₆ := cartan_matrix.E₆.to_lie_algebra R
+abbreviation e₇ := cartan_matrix.E₇.to_lie_algebra R
+abbreviation e₈ := cartan_matrix.E₈.to_lie_algebra R
+abbreviation f₄ := cartan_matrix.F₄.to_lie_algebra R
+abbreviation g₂ := cartan_matrix.G₂.to_lie_algebra R
+end lie_algebra

@@ -1,0 +1,19 @@
+import analysis.matrix
+import analysis.normed_space.basic
+import data.complex.is_R_or_C
+import linear_algebra.unitary_group
+open_locale big_operators matrix
+variables {𝕜 m n E : Type*}
+section entrywise_sup_norm
+variables [is_R_or_C 𝕜] [fintype n] [decidable_eq n]
+lemma entry_norm_bound_of_unitary {U : matrix n n 𝕜} (hU : U ∈ matrix.unitary_group n 𝕜) (i j : n):
+  ∥U i j∥ ≤ 1 :=
+begin
+lemma entrywise_sup_norm_bound_of_unitary {U : matrix n n 𝕜} (hU : U ∈ matrix.unitary_group n 𝕜) :
+  ∥ U ∥ ≤ 1 :=
+begin
+  simp_rw pi_norm_le_iff zero_le_one,
+  intros i j,
+  exact entry_norm_bound_of_unitary hU _ _
+end
+end entrywise_sup_norm

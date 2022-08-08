@@ -1,0 +1,18 @@
+import topology.category.Top.basic
+import category_theory.adjunction.basic
+universe u
+open category_theory
+open Top
+namespace Top
+@[simps unit counit]
+def adj₁ : discrete ⊣ forget Top.{u} :=
+adjunction.mk_of_unit_counit
+{ unit := { app := λ X, id },
+  counit := { app := λ X, ⟨id, continuous_bot⟩ } }
+@[simps unit counit]
+def adj₂ : forget Top.{u} ⊣ trivial :=
+adjunction.mk_of_unit_counit
+{ unit := { app := λ X, ⟨id, continuous_top⟩ },
+  counit := { app := λ X, id } }
+instance : is_right_adjoint (forget Top.{u}) := ⟨_, adj₁⟩
+end Top

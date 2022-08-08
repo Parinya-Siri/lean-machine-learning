@@ -1,0 +1,403 @@
+import set_theory.cardinal.basic
+import topology.metric_space.closeds
+import topology.metric_space.completion
+import topology.metric_space.gromov_hausdorff_realized
+import topology.metric_space.kuratowski
+noncomputable theory
+open_locale classical topological_space ennreal
+local notation `ℓ_infty_ℝ`:= lp (λ n : ℕ, ℝ) ∞
+universes u v w
+open classical set function topological_space filter metric quotient
+open bounded_continuous_function nat int Kuratowski_embedding
+open sum (inl inr)
+local attribute [instance] metric_space_sum
+namespace Gromov_Hausdorff
+section GH_space
+private def isometry_rel : nonempty_compacts ℓ_infty_ℝ → nonempty_compacts ℓ_infty_ℝ → Prop :=
+λ x y, nonempty (x ≃ᵢ y)
+private lemma is_equivalence_isometry_rel : equivalence isometry_rel :=
+⟨λ x, ⟨isometric.refl _⟩, λ x y ⟨e⟩, ⟨e.symm⟩, λ x y z ⟨e⟩ ⟨f⟩, ⟨e.trans f⟩⟩
+instance isometry_rel.setoid : setoid (nonempty_compacts ℓ_infty_ℝ) :=
+setoid.mk isometry_rel is_equivalence_isometry_rel
+definition GH_space : Type := quotient (isometry_rel.setoid)
+definition to_GH_space (X : Type u) [metric_space X] [compact_space X] [nonempty X] : GH_space :=
+  ⟦nonempty_compacts.Kuratowski_embedding X⟧
+instance : inhabited GH_space := ⟨quot.mk _ ⟨⟨{0}, is_compact_singleton⟩, singleton_nonempty _⟩⟩
+@[nolint has_inhabited_instance]
+def GH_space.rep (p : GH_space) : Type := (quotient.out p : nonempty_compacts ℓ_infty_ℝ)
+lemma eq_to_GH_space_iff {X : Type u} [metric_space X] [compact_space X] [nonempty X]
+  {p : nonempty_compacts ℓ_infty_ℝ} :
+  ⟦p⟧ = to_GH_space X ↔ ∃ Ψ : X → ℓ_infty_ℝ, isometry Ψ ∧ range Ψ = p :=
+begin
+  simp only [to_GH_space, quotient.eq],
+  refine ⟨λ h, _, _⟩,
+  { rcases setoid.symm h with ⟨e⟩,
+    have f := (Kuratowski_embedding.isometry X).isometric_on_range.trans e,
+    use [λ x, f x, isometry_subtype_coe.comp f.isometry],
+    rw [range_comp, f.range_eq_univ, set.image_univ, subtype.range_coe],
+    refl },
+  { rintros ⟨Ψ, ⟨isomΨ, rangeΨ⟩⟩,
+    have f := ((Kuratowski_embedding.isometry X).isometric_on_range.symm.trans
+               isomΨ.isometric_on_range).symm,
+    have E : (range Ψ ≃ᵢ nonempty_compacts.Kuratowski_embedding X) =
+        (p ≃ᵢ range (Kuratowski_embedding X)),
+      by { dunfold nonempty_compacts.Kuratowski_embedding, rw [rangeΨ]; refl },
+    exact ⟨cast E f⟩ }
+end
+lemma eq_to_GH_space {p : nonempty_compacts ℓ_infty_ℝ} : ⟦p⟧ = to_GH_space p :=
+eq_to_GH_space_iff.2 ⟨λ x, x, isometry_subtype_coe, subtype.range_coe⟩
+section
+local attribute [reducible] GH_space.rep
+instance rep_GH_space_metric_space {p : GH_space} : metric_space p.rep := by apply_instance
+instance rep_GH_space_compact_space {p : GH_space} : compact_space p.rep := by apply_instance
+instance rep_GH_space_nonempty {p : GH_space} : nonempty p.rep := by apply_instance
+end
+lemma GH_space.to_GH_space_rep (p : GH_space) : to_GH_space p.rep = p :=
+begin
+  change to_GH_space (quot.out p : nonempty_compacts ℓ_infty_ℝ) = p,
+  rw ← eq_to_GH_space,
+  exact quot.out_eq p
+end
+lemma to_GH_space_eq_to_GH_space_iff_isometric {X : Type u} [metric_space X] [compact_space X]
+  [nonempty X] {Y : Type v} [metric_space Y] [compact_space Y] [nonempty Y] :
+  to_GH_space X = to_GH_space Y ↔ nonempty (X ≃ᵢ Y) :=
+⟨begin
+  simp only [to_GH_space, quotient.eq],
+  rintro ⟨e⟩,
+  have I : ((nonempty_compacts.Kuratowski_embedding X) ≃ᵢ
+             (nonempty_compacts.Kuratowski_embedding Y))
+          = ((range (Kuratowski_embedding X)) ≃ᵢ (range (Kuratowski_embedding Y))),
+    by { dunfold nonempty_compacts.Kuratowski_embedding, refl },
+  have f := (Kuratowski_embedding.isometry X).isometric_on_range,
+  have g := (Kuratowski_embedding.isometry Y).isometric_on_range.symm,
+  exact ⟨f.trans $ (cast I e).trans g⟩
+end,
+begin
+  rintro ⟨e⟩,
+  simp only [to_GH_space, quotient.eq],
+  have f := (Kuratowski_embedding.isometry X).isometric_on_range.symm,
+  have g := (Kuratowski_embedding.isometry Y).isometric_on_range,
+  have I : ((range (Kuratowski_embedding X)) ≃ᵢ (range (Kuratowski_embedding Y))) =
+    ((nonempty_compacts.Kuratowski_embedding X) ≃ᵢ
+      (nonempty_compacts.Kuratowski_embedding Y)),
+    by { dunfold nonempty_compacts.Kuratowski_embedding, refl },
+  exact ⟨cast I ((f.trans e).trans g)⟩
+end⟩
+instance : has_dist (GH_space) :=
+{ dist := λ x y, Inf $
+    (λ p : nonempty_compacts ℓ_infty_ℝ × nonempty_compacts ℓ_infty_ℝ,
+      Hausdorff_dist (p.1 : set ℓ_infty_ℝ) p.2) '' ({a | ⟦a⟧ = x} ×ˢ {b | ⟦b⟧ = y}) }
+def GH_dist (X : Type u) (Y : Type v) [metric_space X] [nonempty X] [compact_space X]
+  [metric_space Y] [nonempty Y] [compact_space Y] : ℝ := dist (to_GH_space X) (to_GH_space Y)
+lemma dist_GH_dist (p q : GH_space) : dist p q = GH_dist p.rep (q.rep) :=
+by rw [GH_dist, p.to_GH_space_rep, q.to_GH_space_rep]
+theorem GH_dist_le_Hausdorff_dist {X : Type u} [metric_space X] [compact_space X] [nonempty X]
+  {Y : Type v} [metric_space Y] [compact_space Y] [nonempty Y]
+  {γ : Type w} [metric_space γ] {Φ : X → γ} {Ψ : Y → γ} (ha : isometry Φ) (hb : isometry Ψ) :
+  GH_dist X Y ≤ Hausdorff_dist (range Φ) (range Ψ) :=
+begin
+  rcases exists_mem_of_nonempty X with ⟨xX, _⟩,
+  let s : set γ := (range Φ) ∪ (range Ψ),
+  let Φ' : X → subtype s := λ y, ⟨Φ y, mem_union_left _ (mem_range_self _)⟩,
+  let Ψ' : Y → subtype s := λ y, ⟨Ψ y, mem_union_right _ (mem_range_self _)⟩,
+  have IΦ' : isometry Φ' := λ x y, ha x y,
+  have IΨ' : isometry Ψ' := λ x y, hb x y,
+  have : is_compact s, from (is_compact_range ha.continuous).union (is_compact_range hb.continuous),
+  letI : metric_space (subtype s) := by apply_instance,
+  haveI : compact_space (subtype s) := ⟨is_compact_iff_is_compact_univ.1 ‹is_compact s›⟩,
+  haveI : nonempty (subtype s) := ⟨Φ' xX⟩,
+  have ΦΦ' : Φ = subtype.val ∘ Φ', by { funext, refl },
+  have ΨΨ' : Ψ = subtype.val ∘ Ψ', by { funext, refl },
+  have : Hausdorff_dist (range Φ) (range Ψ) = Hausdorff_dist (range Φ') (range Ψ'),
+  { rw [ΦΦ', ΨΨ', range_comp, range_comp],
+    exact Hausdorff_dist_image (isometry_subtype_coe) },
+  rw this,
+lemma Hausdorff_dist_optimal {X : Type u} [metric_space X] [compact_space X] [nonempty X]
+  {Y : Type v} [metric_space Y] [compact_space Y] [nonempty Y] :
+  Hausdorff_dist (range (optimal_GH_injl X Y)) (range (optimal_GH_injr X Y)) = GH_dist X Y :=
+begin
+  inhabit X, inhabit Y,
+  have A : ∀ p q : nonempty_compacts ℓ_infty_ℝ, ⟦p⟧ = to_GH_space X → ⟦q⟧ = to_GH_space Y →
+        Hausdorff_dist (p : set ℓ_infty_ℝ) q < diam (univ : set X) + 1 + diam (univ : set Y) →
+        Hausdorff_dist (range (optimal_GH_injl X Y)) (range (optimal_GH_injr X Y)) ≤
+        Hausdorff_dist (p : set ℓ_infty_ℝ) q,
+  { assume p q hp hq bound,
+    rcases eq_to_GH_space_iff.1 hp with ⟨Φ, ⟨Φisom, Φrange⟩⟩,
+    rcases eq_to_GH_space_iff.1 hq with ⟨Ψ, ⟨Ψisom, Ψrange⟩⟩,
+    have I : diam (range Φ ∪ range Ψ) ≤ 2 * diam (univ : set X) + 1 + 2 * diam (univ : set Y),
+    { rcases exists_mem_of_nonempty X with ⟨xX, _⟩,
+      have : ∃ y ∈ range Ψ, dist (Φ xX) y < diam (univ : set X) + 1 + diam (univ : set Y),
+      { rw Ψrange,
+        have : Φ xX ∈ ↑p := Φrange.subst (mem_range_self _),
+        exact exists_dist_lt_of_Hausdorff_dist_lt this bound
+          (Hausdorff_edist_ne_top_of_nonempty_of_bounded p.nonempty q.nonempty
+            p.compact.bounded q.compact.bounded) },
+      rcases this with ⟨y, hy, dy⟩,
+      rcases mem_range.1 hy with ⟨z, hzy⟩,
+      rw ← hzy at dy,
+      have DΦ : diam (range Φ) = diam (univ : set X) := Φisom.diam_range,
+      have DΨ : diam (range Ψ) = diam (univ : set Y) := Ψisom.diam_range,
+      calc
+        diam (range Φ ∪ range Ψ) ≤ diam (range Φ) + dist (Φ xX) (Ψ z) + diam (range Ψ) :
+          diam_union (mem_range_self _) (mem_range_self _)
+        ... ≤ diam (univ : set X) + (diam (univ : set X) + 1 + diam (univ : set Y)) +
+              diam (univ : set Y) :
+          by { rw [DΦ, DΨ], apply add_le_add (add_le_add le_rfl (le_of_lt dy)) le_rfl }
+        ... = 2 * diam (univ : set X) + 1 + 2 * diam (univ : set Y) : by ring },
+    let f : X ⊕ Y → ℓ_infty_ℝ := λ x, match x with | inl y := Φ y | inr z := Ψ z end,
+    let F : (X ⊕ Y) × (X ⊕ Y) → ℝ := λ p, dist (f p.1) (f p.2),
+  have B : ∀ p q : nonempty_compacts ℓ_infty_ℝ, ⟦p⟧ = to_GH_space X → ⟦q⟧ = to_GH_space Y →
+        Hausdorff_dist (range (optimal_GH_injl X Y)) (range (optimal_GH_injr X Y)) ≤
+        Hausdorff_dist (p : set ℓ_infty_ℝ) q,
+  { assume p q hp hq,
+    by_cases h :
+      Hausdorff_dist (p : set ℓ_infty_ℝ) q < diam (univ : set X) + 1 + diam (univ : set Y),
+    { exact A p q hp hq h },
+    { calc Hausdorff_dist (range (optimal_GH_injl X Y)) (range (optimal_GH_injr X Y))
+               ≤ HD (candidates_b_dist X Y) :
+             Hausdorff_dist_optimal_le_HD _ _ (candidates_b_dist_mem_candidates_b)
+           ... ≤ diam (univ : set X) + 1 + diam (univ : set Y) : HD_candidates_b_dist_le
+           ... ≤ Hausdorff_dist (p : set ℓ_infty_ℝ) q : not_lt.1 h } },
+  refine le_antisymm _ _,
+  { apply le_cInf,
+    { refine (set.nonempty.prod _ _).image _; exact ⟨_, rfl⟩ },
+    { rintro b ⟨⟨p, q⟩, ⟨hp, hq⟩, rfl⟩,
+      exact B p q hp hq } },
+  { exact GH_dist_le_Hausdorff_dist (isometry_optimal_GH_injl X Y) (isometry_optimal_GH_injr X Y) }
+end
+theorem GH_dist_eq_Hausdorff_dist (X : Type u) [metric_space X] [compact_space X] [nonempty X]
+  (Y : Type v) [metric_space Y] [compact_space Y] [nonempty Y] :
+  ∃ Φ : X → ℓ_infty_ℝ, ∃ Ψ : Y → ℓ_infty_ℝ, isometry Φ ∧ isometry Ψ ∧
+  GH_dist X Y = Hausdorff_dist (range Φ) (range Ψ) :=
+begin
+  let F := Kuratowski_embedding (optimal_GH_coupling X Y),
+  let Φ := F ∘ optimal_GH_injl X Y,
+  let Ψ := F ∘ optimal_GH_injr X Y,
+  refine ⟨Φ, Ψ, _, _, _⟩,
+  { exact (Kuratowski_embedding.isometry _).comp (isometry_optimal_GH_injl X Y) },
+  { exact (Kuratowski_embedding.isometry _).comp (isometry_optimal_GH_injr X Y) },
+  { rw [← image_univ, ← image_univ, image_comp F, image_univ, image_comp F (optimal_GH_injr X Y),
+      image_univ, ← Hausdorff_dist_optimal],
+    exact (Hausdorff_dist_image (Kuratowski_embedding.isometry _)).symm },
+end
+instance : metric_space GH_space :=
+{ dist := dist,
+  dist_self := λ x, begin
+    rcases exists_rep x with ⟨y, hy⟩,
+    refine le_antisymm _ _,
+    { apply cInf_le,
+      { exact ⟨0, by { rintro b ⟨⟨u, v⟩, ⟨hu, hv⟩, rfl⟩, exact Hausdorff_dist_nonneg } ⟩},
+      { simp, existsi [y, y], simpa } },
+    { apply le_cInf,
+      { exact (nonempty.prod ⟨y, hy⟩ ⟨y, hy⟩).image _ },
+      { rintro b ⟨⟨u, v⟩, ⟨hu, hv⟩, rfl⟩, exact Hausdorff_dist_nonneg } },
+  end,
+  dist_comm := λ x y, begin
+    have A : (λ (p : nonempty_compacts ℓ_infty_ℝ × nonempty_compacts ℓ_infty_ℝ),
+                 Hausdorff_dist (p.1 : set ℓ_infty_ℝ) p.2) ''
+             ({a | ⟦a⟧ = x} ×ˢ {b | ⟦b⟧ = y})
+           = ((λ (p : nonempty_compacts ℓ_infty_ℝ × nonempty_compacts ℓ_infty_ℝ),
+                 Hausdorff_dist (p.1 : set ℓ_infty_ℝ) p.2) ∘ prod.swap) ''
+                 ({a | ⟦a⟧ = x} ×ˢ {b | ⟦b⟧ = y}) :=
+      by { congr, funext, simp, rw Hausdorff_dist_comm },
+    simp only [dist, A, image_comp, image_swap_prod],
+  end,
+  eq_of_dist_eq_zero := λ x y hxy, begin
+    rcases GH_dist_eq_Hausdorff_dist x.rep y.rep with ⟨Φ, Ψ, Φisom, Ψisom, DΦΨ⟩,
+    rw [← dist_GH_dist, hxy] at DΦΨ,
+    have : range Φ = range Ψ,
+    { have hΦ : is_compact (range Φ) := is_compact_range Φisom.continuous,
+      have hΨ : is_compact (range Ψ) := is_compact_range Ψisom.continuous,
+      apply (is_closed.Hausdorff_dist_zero_iff_eq _ _ _).1 (DΦΨ.symm),
+      { exact hΦ.is_closed },
+      { exact hΨ.is_closed },
+      { exact Hausdorff_edist_ne_top_of_nonempty_of_bounded (range_nonempty _)
+          (range_nonempty _) hΦ.bounded hΨ.bounded } },
+    have T : ((range Ψ) ≃ᵢ y.rep) = ((range Φ) ≃ᵢ y.rep), by rw this,
+    have eΨ := cast T Ψisom.isometric_on_range.symm,
+    have e := Φisom.isometric_on_range.trans eΨ,
+    rw [← x.to_GH_space_rep, ← y.to_GH_space_rep, to_GH_space_eq_to_GH_space_iff_isometric],
+    exact ⟨e⟩
+  end,
+  dist_triangle := λ x y z, begin
+    let X := x.rep,
+    let Y := y.rep,
+    let Z := z.rep,
+    let γ1 := optimal_GH_coupling X Y,
+    let γ2 := optimal_GH_coupling Y Z,
+    let Φ : Y → γ1 := optimal_GH_injr X Y,
+    have hΦ : isometry Φ := isometry_optimal_GH_injr X Y,
+    let Ψ : Y → γ2 := optimal_GH_injl Y Z,
+    have hΨ : isometry Ψ := isometry_optimal_GH_injl Y Z,
+    let γ := glue_space hΦ hΨ,
+    letI : metric_space γ := metric.metric_space_glue_space hΦ hΨ,
+    have Comm : (to_glue_l hΦ hΨ) ∘ (optimal_GH_injr X Y) =
+      (to_glue_r hΦ hΨ) ∘ (optimal_GH_injl Y Z) := to_glue_commute hΦ hΨ,
+    calc dist x z = dist (to_GH_space X) (to_GH_space Z) :
+        by rw [x.to_GH_space_rep, z.to_GH_space_rep]
+      ... ≤ Hausdorff_dist (range ((to_glue_l hΦ hΨ) ∘ (optimal_GH_injl X Y)))
+                       (range ((to_glue_r hΦ hΨ) ∘ (optimal_GH_injr Y Z))) :
+        GH_dist_le_Hausdorff_dist
+          ((to_glue_l_isometry hΦ hΨ).comp (isometry_optimal_GH_injl X Y))
+          ((to_glue_r_isometry hΦ hΨ).comp (isometry_optimal_GH_injr Y Z))
+      ... ≤ Hausdorff_dist (range ((to_glue_l hΦ hΨ) ∘ (optimal_GH_injl X Y)))
+                           (range ((to_glue_l hΦ hΨ) ∘ (optimal_GH_injr X Y)))
+          + Hausdorff_dist (range ((to_glue_l hΦ hΨ) ∘ (optimal_GH_injr X Y)))
+                           (range ((to_glue_r hΦ hΨ) ∘ (optimal_GH_injr Y Z))) :
+        begin
+          refine Hausdorff_dist_triangle (Hausdorff_edist_ne_top_of_nonempty_of_bounded
+            (range_nonempty _) (range_nonempty _) _ _),
+          { exact (is_compact_range (isometry.continuous ((to_glue_l_isometry hΦ hΨ).comp
+              (isometry_optimal_GH_injl X Y)))).bounded },
+          { exact (is_compact_range (isometry.continuous ((to_glue_l_isometry hΦ hΨ).comp
+              (isometry_optimal_GH_injr X Y)))).bounded }
+        end
+      ... = Hausdorff_dist ((to_glue_l hΦ hΨ) '' (range (optimal_GH_injl X Y)))
+                           ((to_glue_l hΦ hΨ) '' (range (optimal_GH_injr X Y)))
+          + Hausdorff_dist ((to_glue_r hΦ hΨ) '' (range (optimal_GH_injl Y Z)))
+                           ((to_glue_r hΦ hΨ) '' (range (optimal_GH_injr Y Z))) :
+        by simp only [← range_comp, Comm, eq_self_iff_true, add_right_inj]
+      ... = Hausdorff_dist (range (optimal_GH_injl X Y))
+                           (range (optimal_GH_injr X Y))
+          + Hausdorff_dist (range (optimal_GH_injl Y Z))
+                           (range (optimal_GH_injr Y Z)) :
+        by rw [Hausdorff_dist_image (to_glue_l_isometry hΦ hΨ),
+               Hausdorff_dist_image (to_glue_r_isometry hΦ hΨ)]
+      ... = dist (to_GH_space X) (to_GH_space Y) + dist (to_GH_space Y) (to_GH_space Z) :
+        by rw [Hausdorff_dist_optimal, Hausdorff_dist_optimal, GH_dist, GH_dist]
+      ... = dist x y + dist y z:
+        by rw [x.to_GH_space_rep, y.to_GH_space_rep, z.to_GH_space_rep]
+  end }
+definition topological_space.nonempty_compacts.to_GH_space {X : Type u} [metric_space X]
+  (p : nonempty_compacts X) : Gromov_Hausdorff.GH_space := Gromov_Hausdorff.to_GH_space p
+open topological_space
+namespace Gromov_Hausdorff
+section nonempty_compacts
+variables {X : Type u} [metric_space X]
+theorem GH_dist_le_nonempty_compacts_dist (p q : nonempty_compacts X) :
+  dist p.to_GH_space q.to_GH_space ≤ dist p q :=
+begin
+  have ha : isometry (coe : p → X) := isometry_subtype_coe,
+  have hb : isometry (coe : q → X) := isometry_subtype_coe,
+  have A : dist p q = Hausdorff_dist (p : set X) q := rfl,
+  have I : ↑p = range (coe : p → X) := subtype.range_coe_subtype.symm,
+  have J : ↑q = range (coe : q → X) := subtype.range_coe_subtype.symm,
+  rw [A, I, J],
+  exact GH_dist_le_Hausdorff_dist ha hb
+end
+lemma to_GH_space_lipschitz :
+  lipschitz_with 1 (nonempty_compacts.to_GH_space : nonempty_compacts X → GH_space) :=
+lipschitz_with.mk_one GH_dist_le_nonempty_compacts_dist
+lemma to_GH_space_continuous :
+  continuous (nonempty_compacts.to_GH_space : nonempty_compacts X → GH_space) :=
+to_GH_space_lipschitz.continuous
+end nonempty_compacts
+section
+variables {X : Type u} [metric_space X] [compact_space X] [nonempty X]
+          {Y : Type v} [metric_space Y] [compact_space Y] [nonempty Y]
+theorem GH_dist_le_of_approx_subsets {s : set X} (Φ : s → Y) {ε₁ ε₂ ε₃ : ℝ}
+  (hs : ∀ x : X, ∃ y ∈ s, dist x y ≤ ε₁) (hs' : ∀ x : Y, ∃ y : s, dist x (Φ y) ≤ ε₃)
+  (H : ∀ x y : s, |dist x y - dist (Φ x) (Φ y)| ≤ ε₂) :
+  GH_dist X Y ≤ ε₁ + ε₂ / 2 + ε₃ :=
+begin
+  refine le_of_forall_pos_le_add (λ δ δ0, _),
+  rcases exists_mem_of_nonempty X with ⟨xX, _⟩,
+  rcases hs xX with ⟨xs, hxs, Dxs⟩,
+  have sne : s.nonempty := ⟨xs, hxs⟩,
+  letI : nonempty s := sne.to_subtype,
+  have : 0 ≤ ε₂ := le_trans (abs_nonneg _) (H ⟨xs, hxs⟩ ⟨xs, hxs⟩),
+  have : ∀ p q : s, |dist p q - dist (Φ p) (Φ q)| ≤ 2 * (ε₂/2 + δ) := λ p q, calc
+    |dist p q - dist (Φ p) (Φ q)| ≤ ε₂ : H p q
+    ... ≤ 2 * (ε₂/2 + δ) : by linarith,
+  have : GH_dist X Y ≤ Hausdorff_dist (range Fl) (range Fr) :=
+    GH_dist_le_Hausdorff_dist Il Ir,
+  have : Hausdorff_dist (range Fl) (range Fr) ≤ Hausdorff_dist (range Fl) (Fl '' s)
+                                              + Hausdorff_dist (Fl '' s) (range Fr),
+  { have B : bounded (range Fl) := (is_compact_range Il.continuous).bounded,
+    exact Hausdorff_dist_triangle (Hausdorff_edist_ne_top_of_nonempty_of_bounded
+      (range_nonempty _) (sne.image _) B (B.mono (image_subset_range _ _))) },
+  have : Hausdorff_dist (Fl '' s) (range Fr) ≤ Hausdorff_dist (Fl '' s) (Fr '' (range Φ))
+                                             + Hausdorff_dist (Fr '' (range Φ)) (range Fr),
+  { have B : bounded (range Fr) := (is_compact_range Ir.continuous).bounded,
+    exact Hausdorff_dist_triangle' (Hausdorff_edist_ne_top_of_nonempty_of_bounded
+      ((range_nonempty _).image _) (range_nonempty _)
+      (bounded.mono (image_subset_range _ _) B) B) },
+  have : Hausdorff_dist (range Fl) (Fl '' s) ≤ ε₁,
+  { rw [← image_univ, Hausdorff_dist_image Il],
+    have : 0 ≤ ε₁ := le_trans dist_nonneg Dxs,
+    refine Hausdorff_dist_le_of_mem_dist this (λ x hx, hs x)
+      (λ x hx, ⟨x, mem_univ _, by simpa⟩) },
+  have : Hausdorff_dist (Fl '' s) (Fr '' (range Φ)) ≤ ε₂/2 + δ,
+  { refine Hausdorff_dist_le_of_mem_dist (by linarith) _ _,
+    { assume x' hx',
+      rcases (set.mem_image _ _ _).1 hx' with ⟨x, ⟨x_in_s, xx'⟩⟩,
+      rw ← xx',
+      use [Fr (Φ ⟨x, x_in_s⟩), mem_image_of_mem Fr (mem_range_self _)],
+      exact le_of_eq (glue_dist_glued_points (λ x:s, (x:X)) Φ (ε₂/2 + δ) ⟨x, x_in_s⟩) },
+    { assume x' hx',
+      rcases (set.mem_image _ _ _).1 hx' with ⟨y, ⟨y_in_s', yx'⟩⟩,
+      rcases mem_range.1 y_in_s' with ⟨x, xy⟩,
+      use [Fl x, mem_image_of_mem _ x.2],
+      rw [← yx', ← xy, dist_comm],
+      exact le_of_eq (glue_dist_glued_points (@subtype.val X s) Φ (ε₂/2 + δ) x) } },
+  have : Hausdorff_dist (Fr '' (range Φ)) (range Fr) ≤ ε₃,
+  { rw [← @image_univ _ _ Fr, Hausdorff_dist_image Ir],
+    rcases exists_mem_of_nonempty Y with ⟨xY, _⟩,
+    rcases hs' xY with ⟨xs', Dxs'⟩,
+    have : 0 ≤ ε₃ := le_trans dist_nonneg Dxs',
+    refine Hausdorff_dist_le_of_mem_dist this (λ x hx, ⟨x, mem_univ _, by simpa⟩) (λ x _, _),
+    rcases hs' x with ⟨y, Dy⟩,
+    exact ⟨Φ y, mem_range_self _, Dy⟩ },
+  linarith
+end
+instance : second_countable_topology GH_space :=
+begin
+  refine second_countable_of_countable_discretization (λ δ δpos, _),
+  let ε := (2/5) * δ,
+  have εpos : 0 < ε := mul_pos (by norm_num) δpos,
+  have : ∀ p:GH_space, ∃ s : set p.rep, s.finite ∧ (univ ⊆ (⋃x∈s, ball x ε)) :=
+    λ p, by simpa using finite_cover_balls_of_compact (@compact_univ p.rep _ _) εpos,
+  have Npq : N p = N q := (sigma.mk.inj_iff.1 hpq).1,
+  let Ψ : s p → s q := λ x, (E q).symm (fin.cast Npq ((E p) x)),
+  let Φ : s p → q.rep := λ x, Ψ x,
+      assume x y,
+      have : dist (Φ x) (Φ y) = dist (Ψ x) (Ψ y) := rfl,
+      rw this,
+lemma totally_bounded {t : set GH_space} {C : ℝ} {u : ℕ → ℝ} {K : ℕ → ℕ}
+  (ulim : tendsto u at_top (𝓝 0))
+  (hdiam : ∀ p ∈ t, diam (univ : set (GH_space.rep p)) ≤ C)
+  (hcov : ∀ p ∈ t, ∀ n:ℕ, ∃ s : set (GH_space.rep p),
+    cardinal.mk s ≤ K n ∧ univ ⊆ ⋃x∈s, ball x (u n)) :
+  totally_bounded t :=
+begin
+  refine metric.totally_bounded_of_finite_discretization (λ δ δpos, _),
+  let ε := (1/5) * δ,
+  have εpos : 0 < ε := mul_pos (by norm_num) δpos,
+      assume x y,
+      have : dist (Φ x) (Φ y) = dist (Ψ x) (Ψ y) := rfl,
+      rw this,
+variables (X : ℕ → Type) [∀ n, metric_space (X n)] [∀ n, compact_space (X n)] [∀ n, nonempty (X n)]
+structure aux_gluing_struct (A : Type) [metric_space A] : Type 1 :=
+(space  : Type)
+(metric : metric_space space)
+(embed  : A → space)
+(isom   : isometry embed)
+instance (A : Type) [metric_space A] : inhabited (aux_gluing_struct A) :=
+⟨{ space := A,
+  metric := by apply_instance,
+  embed := id,
+  isom := λ x y, rfl }⟩
+def aux_gluing (n : ℕ) : aux_gluing_struct (X n) := nat.rec_on n
+  { space  := X 0,
+    metric := by apply_instance,
+    embed  := id,
+    isom   := λ x y, rfl }
+(λ n Y, by letI : metric_space Y.space := Y.metric; exact
+  { space  := glue_space Y.isom (isometry_optimal_GH_injl (X n) (X (n+1))),
+    metric := by apply_instance,
+    embed  := (to_glue_r Y.isom (isometry_optimal_GH_injl (X n) (X (n+1))))
+              ∘ (optimal_GH_injr (X n) (X (n+1))),
+    isom   := (to_glue_r_isometry _ _).comp (isometry_optimal_GH_injr (X n) (X (n+1))) })
+instance : complete_space GH_space :=
+begin
+  have : ∀ (n : ℕ), 0 < ((1:ℝ) / 2) ^ n, by { apply pow_pos, norm_num },

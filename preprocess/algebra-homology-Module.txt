@@ -1,0 +1,43 @@
+import algebra.homology.homotopy
+import algebra.category.Module.abelian
+import algebra.category.Module.subobject
+universes v u
+open_locale classical
+noncomputable theory
+open category_theory category_theory.limits homological_complex
+variables {R : Type v} [ring R]
+variables {ι : Type*} {c : complex_shape ι} {C D : homological_complex (Module.{u} R) c}
+namespace Module
+lemma homology_ext {L M N K : Module R} {f : L ⟶ M} {g : M ⟶ N} (w : f ≫ g = 0)
+  {h k : homology f g w ⟶ K}
+  (w : ∀ (x : linear_map.ker g),
+    h (cokernel.π (image_to_kernel _ _ w) (to_kernel_subobject x)) =
+      k (cokernel.π (image_to_kernel _ _ w) (to_kernel_subobject x))) : h = k :=
+begin
+  refine cokernel_funext (λ n, _),
+abbreviation to_cycles {C : homological_complex (Module.{u} R) c}
+  {i : ι} (x : linear_map.ker (C.d_from i)) : C.cycles i :=
+to_kernel_subobject x
+@[ext]
+lemma cycles_ext {C : homological_complex (Module.{u} R) c} {i : ι}
+  {x y : C.cycles i} (w : (C.cycles i).arrow x = (C.cycles i).arrow y) : x = y :=
+begin
+  apply_fun (C.cycles i).arrow using (Module.mono_iff_injective _).mp (cycles C i).arrow_mono,
+  exact w,
+end
+local attribute [instance] concrete_category.has_coe_to_sort
+@[simp] lemma cycles_map_to_cycles (f : C ⟶ D) {i : ι} (x : linear_map.ker (C.d_from i)) :
+  (cycles_map f i) (to_cycles x) = to_cycles ⟨f.f i x.1, by simp [x.2]⟩ :=
+by { ext, simp, }
+abbreviation to_homology
+  {C : homological_complex (Module.{u} R) c} {i : ι} (x : linear_map.ker (C.d_from i)) :
+  C.homology i :=
+homology.π (C.d_to i) (C.d_from i) _ (to_cycles x)
+@[ext]
+lemma homology_ext' {M : Module R} (i : ι) {h k : C.homology i ⟶ M}
+  (w : ∀ (x : linear_map.ker (C.d_from i)), h (to_homology x) = k (to_homology x)) :
+  h = k :=
+homology_ext _ w
+example (f g : C ⟶ D) (h : homotopy f g) (i : ι) :
+  (homology_functor (Module.{u} R) c i).map f = (homology_functor (Module.{u} R) c i).map g :=
+begin

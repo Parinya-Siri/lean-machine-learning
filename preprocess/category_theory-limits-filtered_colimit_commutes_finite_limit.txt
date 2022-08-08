@@ -1,0 +1,49 @@
+import category_theory.limits.colimit_limit
+import category_theory.limits.preserves.functor_category
+import category_theory.limits.preserves.finite
+import category_theory.limits.shapes.finite_limits
+import category_theory.limits.preserves.filtered
+import category_theory.concrete_category.basic
+universes v u
+open category_theory
+open category_theory.category
+open category_theory.limits.types
+open category_theory.limits.types.filtered_colimit
+namespace category_theory.limits
+variables {J K : Type v} [small_category J] [small_category K]
+variables (F : J × K ⥤ Type v)
+open category_theory.prod
+variables [is_filtered K]
+section
+variables [fintype J]
+lemma colimit_limit_to_limit_colimit_injective :
+  function.injective (colimit_limit_to_limit_colimit F) :=
+begin
+  classical,
+lemma colimit_limit_to_limit_colimit_surjective :
+  function.surjective (colimit_limit_to_limit_colimit F) :=
+begin
+  classical,
+noncomputable def colimit_limit_iso (F : J ⥤ K ⥤ C) :
+  colimit (limit F) ≅ limit (colimit F.flip) :=
+(is_limit_of_preserves colim (limit.is_limit _)).cone_point_unique_up_to_iso (limit.is_limit _) ≪≫
+  (has_limit.iso_of_nat_iso (colimit_flip_iso_comp_colim _).symm)
+@[simp, reassoc]
+lemma ι_colimit_limit_iso_limit_π (F : J ⥤ K ⥤ C) (a) (b) :
+  colimit.ι (limit F) a ≫ (colimit_limit_iso F).hom ≫ limit.π (colimit F.flip) b =
+  (limit.π F b).app a ≫ (colimit.ι F.flip a).app b :=
+begin
+  dsimp [colimit_limit_iso],
+  simp only [functor.map_cone_π_app, iso.symm_hom,
+    limits.limit.cone_point_unique_up_to_iso_hom_comp_assoc, limits.limit.cone_π,
+    limits.colimit.ι_map_assoc, limits.colimit_flip_iso_comp_colim_inv_app, assoc,
+    limits.has_limit.iso_of_nat_iso_hom_π],
+  congr' 1,
+  simp only [← category.assoc, iso.comp_inv_eq,
+    limits.colimit_obj_iso_colimit_comp_evaluation_ι_app_hom,
+    limits.has_colimit.iso_of_nat_iso_ι_hom, nat_iso.of_components.hom_app],
+  dsimp,
+  simp,
+end
+end
+end category_theory.limits

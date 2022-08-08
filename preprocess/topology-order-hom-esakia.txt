@@ -1,0 +1,116 @@
+import order.hom.bounded
+import order.hom.order
+import topology.order.hom.basic
+open function
+variables {F α β γ δ : Type*}
+structure pseudo_epimorphism (α β : Type*) [preorder α] [preorder β] extends α →o β :=
+(exists_map_eq_of_map_le' ⦃a : α⦄ ⦃b : β⦄ : to_fun a ≤ b → ∃ c, a ≤ c ∧ to_fun c = b)
+structure esakia_hom (α β : Type*) [topological_space α] [preorder α] [topological_space β]
+  [preorder β] extends α →Co β :=
+(exists_map_eq_of_map_le' ⦃a : α⦄ ⦃b : β⦄ : to_fun a ≤ b → ∃ c, a ≤ c ∧ to_fun c = b)
+class pseudo_epimorphism_class (F : Type*) (α β : out_param $ Type*) [preorder α] [preorder β]
+  extends rel_hom_class F ((≤) : α → α → Prop) ((≤) : β → β → Prop) :=
+(exists_map_eq_of_map_le (f : F) ⦃a : α⦄ ⦃b : β⦄ : f a ≤ b → ∃ c, a ≤ c ∧ f c = b)
+class esakia_hom_class (F : Type*) (α β : out_param $ Type*) [topological_space α] [preorder α]
+  [topological_space β] [preorder β]
+  extends continuous_order_hom_class F α β :=
+(exists_map_eq_of_map_le (f : F) ⦃a : α⦄ ⦃b : β⦄ : f a ≤ b → ∃ c, a ≤ c ∧ f c = b)
+export pseudo_epimorphism_class (exists_map_eq_of_map_le)
+namespace pseudo_epimorphism
+variables [preorder α] [preorder β] [preorder γ] [preorder δ]
+instance : pseudo_epimorphism_class (pseudo_epimorphism α β) α β :=
+{ coe := λ f, f.to_fun,
+  coe_injective' := λ f g h, by { obtain ⟨⟨_, _⟩, _⟩ := f, obtain ⟨⟨_, _⟩, _⟩ := g, congr' },
+  map_rel := λ f, f.monotone',
+  exists_map_eq_of_map_le := pseudo_epimorphism.exists_map_eq_of_map_le' }
+instance : has_coe_to_fun (pseudo_epimorphism α β) (λ _, α → β) := fun_like.has_coe_to_fun
+@[simp] lemma to_fun_eq_coe {f : pseudo_epimorphism α β} : f.to_fun = (f : α → β) := rfl
+@[ext] lemma ext {f g : pseudo_epimorphism α β} (h : ∀ a, f a = g a) : f = g := fun_like.ext f g h
+protected def copy (f : pseudo_epimorphism α β) (f' : α → β) (h : f' = f) :
+  pseudo_epimorphism α β :=
+⟨f.to_order_hom.copy f' h, by simpa only [h.symm, to_fun_eq_coe] using f.exists_map_eq_of_map_le'⟩
+variables (α)
+protected def id : pseudo_epimorphism α α := ⟨order_hom.id, λ a b h, ⟨b, h, rfl⟩⟩
+instance : inhabited (pseudo_epimorphism α α) := ⟨pseudo_epimorphism.id α⟩
+@[simp] lemma coe_id : ⇑(pseudo_epimorphism.id α) = id := rfl
+@[simp] lemma coe_id_order_hom : (pseudo_epimorphism.id α : α →o α) = order_hom.id := rfl
+variables {α}
+@[simp] lemma id_apply (a : α) : pseudo_epimorphism.id α a = a := rfl
+def comp (g : pseudo_epimorphism β γ) (f : pseudo_epimorphism α β) : pseudo_epimorphism α γ :=
+⟨g.to_order_hom.comp f.to_order_hom, λ a b h₀, begin
+  obtain ⟨b, h₁, rfl⟩ := g.exists_map_eq_of_map_le' h₀,
+  obtain ⟨b, h₂, rfl⟩ := f.exists_map_eq_of_map_le' h₁,
+  exact ⟨b, h₂, rfl⟩,
+end⟩
+@[simp] lemma coe_comp (g : pseudo_epimorphism β γ) (f : pseudo_epimorphism α β) :
+  (g.comp f : α → γ) = g ∘ f := rfl
+@[simp] lemma coe_comp_order_hom (g : pseudo_epimorphism β γ) (f : pseudo_epimorphism α β) :
+  (g.comp f : α →o γ) = (g : β →o γ).comp f := rfl
+@[simp] lemma comp_apply (g : pseudo_epimorphism β γ) (f : pseudo_epimorphism α β) (a : α) :
+  (g.comp f) a = g (f a) := rfl
+@[simp] lemma comp_assoc (h : pseudo_epimorphism γ δ) (g : pseudo_epimorphism β γ)
+  (f : pseudo_epimorphism α β) :
+  (h.comp g).comp f = h.comp (g.comp f) := rfl
+@[simp] lemma comp_id (f : pseudo_epimorphism α β) : f.comp (pseudo_epimorphism.id α) = f :=
+ext $ λ a, rfl
+@[simp] lemma id_comp (f : pseudo_epimorphism α β) : (pseudo_epimorphism.id β).comp f = f :=
+ext $ λ a, rfl
+lemma cancel_right {g₁ g₂ : pseudo_epimorphism β γ} {f : pseudo_epimorphism α β}
+  (hf : surjective f) :
+  g₁.comp f = g₂.comp f ↔ g₁ = g₂ :=
+⟨λ h, ext $ hf.forall.2 $ fun_like.ext_iff.1 h, congr_arg _⟩
+lemma cancel_left {g : pseudo_epimorphism β γ} {f₁ f₂ : pseudo_epimorphism α β} (hg : injective g) :
+  g.comp f₁ = g.comp f₂ ↔ f₁ = f₂ :=
+⟨λ h, ext $ λ a, hg $ by rw [←comp_apply, h, comp_apply], congr_arg _⟩
+end pseudo_epimorphism
+namespace esakia_hom
+variables [topological_space α] [preorder α] [topological_space β] [preorder β]
+  [topological_space γ] [preorder γ] [topological_space δ] [preorder δ]
+def to_pseudo_epimorphism (f : esakia_hom α β) : pseudo_epimorphism α β := { ..f }
+instance : esakia_hom_class (esakia_hom α β) α β :=
+{ coe := λ f, f.to_fun,
+  coe_injective' := λ f g h,
+    by { obtain ⟨⟨⟨_, _⟩, _⟩, _⟩ := f, obtain ⟨⟨⟨_, _⟩, _⟩, _⟩ := g, congr' },
+  map_rel := λ f, f.monotone',
+  map_continuous := λ f, f.continuous_to_fun,
+  exists_map_eq_of_map_le := λ f, f.exists_map_eq_of_map_le' }
+instance : has_coe_to_fun (esakia_hom α β) (λ _, α → β) := fun_like.has_coe_to_fun
+@[simp] lemma to_fun_eq_coe {f : esakia_hom α β} : f.to_fun = (f : α → β) := rfl
+@[ext] lemma ext {f g : esakia_hom α β} (h : ∀ a, f a = g a) : f = g := fun_like.ext f g h
+protected def copy (f : esakia_hom α β) (f' : α → β) (h : f' = f) : esakia_hom α β :=
+⟨f.to_continuous_order_hom.copy f' h,
+  by simpa only [h.symm, to_fun_eq_coe] using f.exists_map_eq_of_map_le'⟩
+variables (α)
+protected def id : esakia_hom α α := ⟨continuous_order_hom.id α, λ a b h, ⟨b, h, rfl⟩⟩
+instance : inhabited (esakia_hom α α) := ⟨esakia_hom.id α⟩
+@[simp] lemma coe_id : ⇑(esakia_hom.id α) = id := rfl
+@[simp] lemma coe_id_continuous_order_hom :
+  (esakia_hom.id α : α →Co α) = continuous_order_hom.id α := rfl
+@[simp] lemma coe_id_pseudo_epimorphism :
+  (esakia_hom.id α : pseudo_epimorphism α α) = pseudo_epimorphism.id α  := rfl
+variables {α}
+@[simp] lemma id_apply (a : α) : esakia_hom.id α a = a := rfl
+def comp (g : esakia_hom β γ) (f : esakia_hom α β) : esakia_hom α γ :=
+⟨g.to_continuous_order_hom.comp f.to_continuous_order_hom, λ a b h₀, begin
+  obtain ⟨b, h₁, rfl⟩ := g.exists_map_eq_of_map_le' h₀,
+  obtain ⟨b, h₂, rfl⟩ := f.exists_map_eq_of_map_le' h₁,
+  exact ⟨b, h₂, rfl⟩,
+end⟩
+@[simp] lemma coe_comp (g : esakia_hom β γ) (f : esakia_hom α β) : (g.comp f : α → γ) = g ∘ f := rfl
+@[simp] lemma comp_apply (g : esakia_hom β γ) (f : esakia_hom α β) (a : α) :
+  (g.comp f) a = g (f a) := rfl
+@[simp] lemma coe_comp_continuous_order_hom (g : esakia_hom β γ) (f : esakia_hom α β) :
+  (g.comp f : α →Co γ) = (g : β →Co γ).comp f := rfl
+@[simp] lemma coe_comp_pseudo_epimorphism (g : esakia_hom β γ) (f : esakia_hom α β) :
+  (g.comp f : pseudo_epimorphism α γ) = (g : pseudo_epimorphism β γ).comp f := rfl
+@[simp] lemma comp_assoc (h : esakia_hom γ δ) (g : esakia_hom β γ) (f : esakia_hom α β) :
+  (h.comp g).comp f = h.comp (g.comp f) := rfl
+@[simp] lemma comp_id (f : esakia_hom α β) : f.comp (esakia_hom.id α) = f := ext $ λ a, rfl
+@[simp] lemma id_comp (f : esakia_hom α β) : (esakia_hom.id β).comp f = f := ext $ λ a, rfl
+lemma cancel_right {g₁ g₂ : esakia_hom β γ} {f : esakia_hom α β} (hf : surjective f) :
+  g₁.comp f = g₂.comp f ↔ g₁ = g₂ :=
+⟨λ h, ext $ hf.forall.2 $ fun_like.ext_iff.1 h, congr_arg _⟩
+lemma cancel_left {g : esakia_hom β γ} {f₁ f₂ : esakia_hom α β} (hg : injective g) :
+  g.comp f₁ = g.comp f₂ ↔ f₁ = f₂ :=
+⟨λ h, ext $ λ a, hg $ by rw [←comp_apply, h, comp_apply], congr_arg _⟩
+end esakia_hom

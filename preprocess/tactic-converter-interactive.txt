@@ -1,0 +1,39 @@
+import tactic.core
+import tactic.converter.old_conv
+namespace old_conv
+meta def save_info (p : pos) : old_conv unit :=
+λ r lhs, do
+  ts ← tactic.read,
+protected meta def conv (t : conv.interactive.itactic) : conv unit :=
+do transitivity,
+   a :: rest ← get_goals,
+   set_goals [a],
+   t,
+   all_goals reflexivity,
+   set_goals rest
+meta def erw (q : parse rw_rules) (cfg : rewrite_cfg := {md := semireducible}) : conv unit :=
+rw q cfg
+open interactive.types
+meta def guard_target (p : parse texpr) : conv unit :=
+do `(%%t = _) ← target, tactic.interactive.guard_expr_eq t p
+end interactive
+end conv
+namespace tactic
+namespace interactive
+setup_tactic_parser
+meta def old_conv (c : old_conv.interactive.itactic) : tactic unit :=
+do t ← target,
+   (new_t, pr) ← c.to_tactic `eq t,
+   replace_target new_t pr
+meta def find (p : parse lean.parser.pexpr) (c : old_conv.interactive.itactic) : tactic unit :=
+old_conv $ old_conv.interactive.find p c
+meta def conv_lhs (loc : parse (tk "at" *> ident)?)
+              (p : parse (tk "in" *> parser.pexpr)?)
+              (c : conv.interactive.itactic) : tactic unit :=
+conv loc p (conv.interactive.to_lhs >> c)
+meta def conv_rhs (loc : parse (tk "at" *> ident)?)
+              (p : parse (tk "in" *> parser.pexpr)?)
+              (c : conv.interactive.itactic) : tactic unit :=
+conv loc p (conv.interactive.to_rhs >> c)
+end interactive
+end tactic

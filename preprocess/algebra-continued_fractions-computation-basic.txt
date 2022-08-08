@@ -1,0 +1,32 @@
+import algebra.order.floor
+import algebra.continued_fractions.basic
+import algebra.order.field
+namespace generalized_continued_fraction
+structure int_fract_pair := (b : ℤ) (fr : K)
+variable {K}
+namespace int_fract_pair
+instance [has_repr K] : has_repr (int_fract_pair K) :=
+⟨λ p, "(b : " ++ (repr p.b) ++ ", fract : " ++ (repr p.fr) ++ ")"⟩
+instance inhabited [inhabited K] : inhabited (int_fract_pair K) := ⟨⟨0, default⟩⟩
+def mapFr {β : Type*} (f : K → β) (gp : int_fract_pair K) : int_fract_pair β :=
+⟨gp.b, f gp.fr⟩
+section coe
+variables {β : Type*} [has_coe K β]
+instance has_coe_to_int_fract_pair : has_coe (int_fract_pair K) (int_fract_pair β) :=
+⟨mapFr coe⟩
+@[simp, norm_cast]
+lemma coe_to_int_fract_pair {b : ℤ} {fr : K} :
+  (↑(int_fract_pair.mk b fr) : int_fract_pair β) = int_fract_pair.mk b (↑fr : β) :=
+rfl
+end coe
+variables [linear_ordered_field K] [floor_ring K]
+protected def of (v : K) : int_fract_pair K := ⟨⌊v⌋, int.fract v⟩
+protected def stream (v : K) : stream $ option (int_fract_pair K)
+| 0 := some (int_fract_pair.of v)
+| (n + 1) := do ap_n ← stream n,
+  if ap_n.fr = 0 then none else int_fract_pair.of ap_n.fr⁻¹
+lemma stream_is_seq (v : K) : (int_fract_pair.stream v).is_seq :=
+by { assume _ hyp, simp [int_fract_pair.stream, hyp] }
+protected def seq1 (v : K) : seq1 $ int_fract_pair K :=
+protected def of [linear_ordered_field K] [floor_ring K] (v : K) :
+  generalized_continued_fraction K :=

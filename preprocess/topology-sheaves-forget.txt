@@ -1,0 +1,43 @@
+import category_theory.limits.preserves.shapes.products
+import topology.sheaves.sheaf
+noncomputable theory
+open category_theory
+open category_theory.limits
+open topological_space
+open opposite
+namespace Top
+namespace presheaf
+namespace sheaf_condition
+open sheaf_condition_equalizer_products
+universes v u₁ u₂
+variables {C : Type u₁} [category.{v} C] [has_limits C]
+variables {D : Type u₂} [category.{v} D] [has_limits D]
+variables (G : C ⥤ D) [preserves_limits G]
+variables {X : Top.{v}} (F : presheaf C X)
+variables {ι : Type v} (U : ι → opens X)
+local attribute [reducible] diagram left_res right_res
+def diagram_comp_preserves_limits :
+  diagram F U ⋙ G ≅ diagram (F ⋙ G) U :=
+begin
+  fapply nat_iso.of_components,
+  rintro ⟨j⟩,
+  exact (preserves_product.iso _ _),
+  exact (preserves_product.iso _ _),
+  rintros ⟨⟩ ⟨⟩ ⟨⟩,
+def map_cone_fork : G.map_cone (fork F U) ≅
+  (cones.postcompose (diagram_comp_preserves_limits G F U).inv).obj (fork (F ⋙ G) U) :=
+cones.ext (iso.refl _) (λ j,
+begin
+  dsimp, simp [diagram_comp_preserves_limits], cases j; dsimp,
+  { rw iso.eq_comp_inv,
+    ext,
+    simp, dsimp, simp, },
+  { rw iso.eq_comp_inv,
+    ext,
+lemma is_sheaf_iff_is_sheaf_comp :
+  presheaf.is_sheaf F ↔ presheaf.is_sheaf (F ⋙ G) :=
+begin
+  split,
+  { intros S ι U,
+end presheaf
+end Top

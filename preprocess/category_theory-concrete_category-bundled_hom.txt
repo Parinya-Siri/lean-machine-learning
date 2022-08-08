@@ -1,0 +1,64 @@
+import category_theory.concrete_category.basic
+import category_theory.concrete_category.bundled
+universes u
+namespace category_theory
+variables {c : Type u → Type u} (hom : Π ⦃α β : Type u⦄ (Iα : c α) (Iβ : c β), Type u)
+structure bundled_hom :=
+(to_fun : Π {α β : Type u} (Iα : c α) (Iβ : c β), hom Iα Iβ → α → β)
+(id : Π {α : Type u} (I : c α), hom I I)
+(comp : Π {α β γ : Type u} (Iα : c α) (Iβ : c β) (Iγ : c γ),
+  hom Iβ Iγ → hom Iα Iβ → hom Iα Iγ)
+(hom_ext : ∀ {α β : Type u} (Iα : c α) (Iβ : c β), function.injective (to_fun Iα Iβ) . obviously)
+(id_to_fun : ∀ {α : Type u} (I : c α), to_fun I I (id I) = _root_.id . obviously)
+(comp_to_fun : ∀ {α β γ : Type u} (Iα : c α) (Iβ : c β) (Iγ : c γ)
+  (f : hom Iα Iβ) (g : hom Iβ Iγ),
+  to_fun Iα Iγ (comp Iα Iβ Iγ g f) = (to_fun Iβ Iγ g) ∘ (to_fun Iα Iβ f) . obviously)
+attribute [class] bundled_hom
+attribute [simp] bundled_hom.id_to_fun bundled_hom.comp_to_fun
+namespace bundled_hom
+variable [𝒞 : bundled_hom hom]
+include 𝒞
+@[nolint dangerous_instance] instance category : category (bundled c) :=
+by refine
+{ hom := λ X Y, @hom X Y X.str Y.str,
+  id := λ X, @bundled_hom.id c hom 𝒞 X X.str,
+  comp := λ X Y Z f g, @bundled_hom.comp c hom 𝒞 X Y Z X.str Y.str Z.str g f,
+  comp_id' := _,
+  id_comp' := _,
+  assoc' := _};
+intros; apply 𝒞.hom_ext;
+  simp only [𝒞.id_to_fun, 𝒞.comp_to_fun, function.left_id, function.right_id]
+@[nolint dangerous_instance] instance concrete_category : concrete_category.{u} (bundled c) :=
+{ forget := { obj := λ X, X,
+              map := λ X Y f, 𝒞.to_fun X.str Y.str f,
+              map_id' := λ X, 𝒞.id_to_fun X.str,
+              map_comp' := by intros; erw 𝒞.comp_to_fun; refl },
+  forget_faithful := { map_injective' := by intros; apply 𝒞.hom_ext } }
+variables {hom}
+local attribute [instance] concrete_category.has_coe_to_fun
+def mk_has_forget₂ {d : Type u → Type u} {hom_d : Π ⦃α β : Type u⦄ (Iα : d α) (Iβ : d β), Type u}
+  [bundled_hom hom_d] (obj : Π ⦃α⦄, c α → d α)
+  (map : Π {X Y : bundled c}, (X ⟶ Y) → ((bundled.map obj X) ⟶ (bundled.map obj Y)))
+  (h_map : ∀ {X Y : bundled c} (f : X ⟶ Y), (map f : X → Y) = f)
+  : has_forget₂ (bundled c) (bundled d) :=
+has_forget₂.mk'
+  (bundled.map @obj)
+  (λ _, rfl)
+  @map
+  (by intros; apply heq_of_eq; apply h_map)
+variables {d : Type u → Type u}
+variables (hom)
+section
+omit 𝒞
+@[reducible] def map_hom (F : Π {α}, d α → c α) : Π ⦃α β : Type u⦄ (Iα : d α) (Iβ : d β), Type u :=
+λ α β iα iβ, hom (F iα) (F iβ)
+end
+def map (F : Π {α}, d α → c α) : bundled_hom (map_hom hom @F) :=
+{ to_fun := λ α β iα iβ f, 𝒞.to_fun (F iα) (F iβ) f,
+  id := λ α iα, 𝒞.id (F iα),
+  comp := λ α β γ iα iβ iγ f g, 𝒞.comp (F iα) (F iβ) (F iγ) f g,
+  hom_ext := λ α β iα iβ f g h, 𝒞.hom_ext (F iα) (F iβ) h }
+section
+omit 𝒞
+class parent_projection (F : Π {α}, d α → c α)
+end

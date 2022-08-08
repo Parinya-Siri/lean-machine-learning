@@ -1,0 +1,38 @@
+import data.fun_like.basic
+instance : has_coe_to_fun (my_embedding A B) (λ _, A → B) := ⟨my_embedding.to_fun⟩
+@[simp] lemma to_fun_eq_coe {f : my_embedding A B} : f.to_fun = (f : A → B) := rfl
+@[ext] theorem ext {f g : my_embedding A B} (h : ∀ x, f x = g x) : f = g := fun_like.ext f g h
+protected def copy (f : my_embedding A B) (f' : A → B) (h : f' = ⇑f) : my_embedding A B :=
+{ to_fun := f',
+  injective' := h.symm ▸ f.injective',
+  map_op' := h.symm ▸ f.map_op' }
+end my_embedding
+```
+This file will then provide a `has_coe_to_fun` instance and various
+extensionality and simp lemmas.
+## Embedding classes extending `embedding_like`
+The `embedding_like` design provides further benefits if you put in a bit more work.
+The first step is to extend `embedding_like` to create a class of those types satisfying
+the axioms of your new type of morphisms.
+Continuing the example above:
+```
+class my_embedding_class (F : Type*) (A B : out_param $ Type*) [my_class A] [my_class B]
+  extends embedding_like F A B :=
+(map_op : ∀ (f : F) (x y : A), f (my_class.op x y) = my_class.op (f x) (f y))
+@[simp] lemma map_op {F A B : Type*} [my_class A] [my_class B] [my_embedding_class F A B]
+  (f : F) (x y : A) : f (my_class.op x y) = my_class.op (f x) (f y) :=
+my_embedding_class.map_op
+class embedding_like (F : Sort*) (α β : out_param Sort*)
+  extends fun_like F α (λ _, β) :=
+(injective' : ∀ (f : F), @function.injective α β (coe f))
+namespace embedding_like
+variables {F α β γ : Sort*} [i : embedding_like F α β]
+include i
+protected lemma injective (f : F) : function.injective f := injective' f
+@[simp] lemma apply_eq_iff_eq (f : F) {x y : α} : f x = f y ↔ x = y :=
+(embedding_like.injective f).eq_iff
+omit i
+@[simp] lemma comp_injective {F : Sort*} [embedding_like F β γ] (f : α → β) (e : F) :
+  function.injective (e ∘ f) ↔ function.injective f :=
+(embedding_like.injective e).of_comp_iff f
+end embedding_like

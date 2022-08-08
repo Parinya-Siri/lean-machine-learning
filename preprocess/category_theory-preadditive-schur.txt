@@ -1,0 +1,72 @@
+import algebra.group.ext
+import category_theory.simple
+import category_theory.linear
+import category_theory.endomorphism
+import algebra.algebra.spectrum
+namespace category_theory
+open category_theory.limits
+variables {C : Type*} [category C]
+variables [preadditive C]
+lemma is_iso_of_hom_simple [has_kernels C] {X Y : C} [simple X] [simple Y] {f : X ⟶ Y} (w : f ≠ 0) :
+  is_iso f :=
+begin
+  haveI := mono_of_nonzero_from_simple w,
+  exact is_iso_of_mono_of_nonzero w
+end
+lemma is_iso_iff_nonzero [has_kernels C] {X Y : C} [simple X] [simple Y] (f : X ⟶ Y) :
+  is_iso f ↔ f ≠ 0 :=
+⟨λ I,
+  begin
+    introI h,
+    apply id_nonzero X,
+    simp only [←is_iso.hom_inv_id f, h, zero_comp],
+  end,
+  λ w, is_iso_of_hom_simple w⟩
+noncomputable
+instance [has_kernels C] {X : C} [simple X] : division_ring (End X) :=
+by classical; exact
+{ inv := λ f, if h : f = 0 then 0 else by { haveI := is_iso_of_hom_simple h, exact inv f, },
+  exists_pair_ne := ⟨𝟙 X, 0, id_nonzero _⟩,
+  inv_zero := dif_pos rfl,
+  mul_inv_cancel := λ f h, begin
+    haveI := is_iso_of_hom_simple h,
+    convert is_iso.inv_hom_id f,
+    exact dif_neg h,
+  end,
+  ..(infer_instance : ring (End X)) }
+open finite_dimensional
+section
+variables (𝕜 : Type*) [division_ring 𝕜]
+lemma finrank_hom_simple_simple_eq_zero_of_not_iso
+  [has_kernels C] [linear 𝕜 C] {X Y : C} [simple X] [simple Y]
+  (h : (X ≅ Y) → false):
+  finrank 𝕜 (X ⟶ Y) = 0 :=
+begin
+  haveI := subsingleton_of_forall_eq (0 : X ⟶ Y) (λ f, begin
+    have p := not_congr (is_iso_iff_nonzero f),
+    simp only [not_not, ne.def] at p,
+    refine p.mp (λ _, by exactI h (as_iso f)),
+  end),
+  exact finrank_zero_of_subsingleton,
+end
+end
+variables (𝕜 : Type*) [field 𝕜]
+variables [is_alg_closed 𝕜] [linear 𝕜 C]
+lemma finrank_endomorphism_simple_eq_one
+  (X : C) [simple X] [I : finite_dimensional 𝕜 (X ⟶ X)] :
+  finrank 𝕜 (X ⟶ X) = 1 :=
+finrank_endomorphism_eq_one 𝕜 is_iso_iff_nonzero
+lemma endomorphism_simple_eq_smul_id
+  {X : C} [simple X] [I : finite_dimensional 𝕜 (X ⟶ X)] (f : X ⟶ X) :
+  ∃ c : 𝕜, c • 𝟙 X = f :=
+(finrank_eq_one_iff_of_nonzero' (𝟙 X) (id_nonzero X)).mp (finrank_endomorphism_simple_eq_one 𝕜 X) f
+noncomputable
+def field_End_of_finite_dimensional (X : C) [simple X] [I : finite_dimensional 𝕜 (X ⟶ X)] :
+  field (End X) :=
+by classical; exact
+{ mul_comm := λ f g, begin
+    obtain ⟨c, rfl⟩ := endomorphism_simple_eq_smul_id 𝕜 f,
+    obtain ⟨d, rfl⟩ := endomorphism_simple_eq_smul_id 𝕜 g,
+    simp [←mul_smul, mul_comm c d],
+  end,
+  ..(infer_instance : division_ring (End X)) }

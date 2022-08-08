@@ -1,0 +1,24 @@
+import tactic.core
+import tactic.nth_rewrite.basic
+namespace tactic
+namespace nth_rewrite.congr
+open nth_rewrite
+meta def rewrite_without_new_mvars
+  (r : expr) (e : expr) (cfg : nth_rewrite.cfg := {}) : tactic (expr × expr) :=
+meta def rewrite_is_of_entire : expr → bool
+| `(@eq.rec _ %%term %%C %%p _ _) :=
+  match C with
+  | `(λ p, _ = p) := tt
+  | _ := ff
+  end
+| _ := ff
+meta def rewrite_at_lens
+  (cfg : nth_rewrite.cfg) (r : expr × bool) (l : expr_lens) (e : expr) :
+  tactic (list tracked_rewrite) :=
+do
+  (v, pr) ← rewrite_without_new_mvars r.1 e {cfg with symm := r.2},
+meta def all_rewrites (e : expr) (r : expr × bool) (cfg : nth_rewrite.cfg := {}) :
+  tactic (list tracked_rewrite) :=
+e.app_map (rewrite_at_lens cfg r)
+end nth_rewrite.congr
+end tactic

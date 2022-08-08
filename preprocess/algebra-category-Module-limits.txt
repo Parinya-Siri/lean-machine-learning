@@ -1,0 +1,111 @@
+import algebra.category.Module.basic
+import algebra.category.Group.limits
+import algebra.direct_limit
+open category_theory
+open category_theory.limits
+def sections_submodule (F : J ⥤ Module.{max v w} R) :
+  submodule R (Π j, F.obj j) :=
+{ carrier := (F ⋙ forget (Module R)).sections,
+  smul_mem' := λ r s sh j j' f,
+  begin
+    simp only [forget_map_eq_coe, functor.comp_map, pi.smul_apply, linear_map.map_smul],
+    dsimp [functor.sections] at sh,
+    rw sh f,
+  end,
+  ..(AddGroup.sections_add_subgroup
+      (F ⋙ forget₂ (Module R) AddCommGroup.{max v w} ⋙ forget₂ AddCommGroup AddGroup.{max v w})) }
+def limit_π_linear_map (F : J ⥤ Module R) (j) :
+  (types.limit_cone (F ⋙ forget (Module.{max v w} R))).X →ₗ[R] (F ⋙ forget (Module R)).obj j :=
+{ to_fun := (types.limit_cone (F ⋙ forget (Module R))).π.app j,
+  map_smul' := λ x y, rfl,
+  map_add' := λ x y, rfl }
+namespace has_limits
+def limit_cone (F : J ⥤ Module.{max v w} R) : cone F :=
+{ X := Module.of R (types.limit_cone (F ⋙ forget _)).X,
+  π :=
+  { app := limit_π_linear_map F,
+    naturality' := λ j j' f,
+      linear_map.coe_injective ((types.limit_cone (F ⋙ forget _)).π.naturality f) } }
+def limit_cone_is_limit (F : J ⥤ Module.{max v w} R) : is_limit (limit_cone F) :=
+by refine is_limit.of_faithful
+      (forget (Module R)) (types.limit_cone_is_limit _)
+      (λ s, ⟨_, _, _⟩) (λ s, rfl);
+    intros;
+    ext j;
+    simp only [subtype.coe_mk, functor.map_cone_π_app, forget_map_eq_coe,
+         linear_map.map_add, linear_map.map_smul];
+    refl
+end has_limits
+open has_limits
+@[irreducible]
+instance has_limits_of_size : has_limits_of_size.{v v} (Module.{max v w} R) :=
+{ has_limits_of_shape := λ J 𝒥, by exactI
+  { has_limit := λ F, has_limit.mk
+    { cone     := limit_cone F,
+      is_limit := limit_cone_is_limit F } } }
+instance has_limits : has_limits (Module.{w} R) := Module.has_limits_of_size.{w w u}
+def forget₂_AddCommGroup_preserves_limits_aux (F : J ⥤ Module.{max v w} R) :
+  is_limit ((forget₂ (Module R) AddCommGroup).map_cone (limit_cone F)) :=
+AddCommGroup.limit_cone_is_limit (F ⋙ forget₂ (Module R) AddCommGroup.{max v w})
+instance forget₂_AddCommGroup_preserves_limits_of_size :
+  preserves_limits_of_size.{v v} (forget₂ (Module R) AddCommGroup.{max v w}) :=
+{ preserves_limits_of_shape := λ J 𝒥, by exactI
+  { preserves_limit := λ F, preserves_limit_of_preserves_limit_cone
+      (limit_cone_is_limit F) (forget₂_AddCommGroup_preserves_limits_aux F) } }
+instance forget₂_AddCommGroup_preserves_limits :
+  preserves_limits (forget₂ (Module R) AddCommGroup.{w}) :=
+Module.forget₂_AddCommGroup_preserves_limits_of_size.{w w}
+instance forget_preserves_limits_of_size :
+  preserves_limits_of_size.{v v} (forget (Module.{max v w} R)) :=
+{ preserves_limits_of_shape := λ J 𝒥, by exactI
+  { preserves_limit := λ F, preserves_limit_of_preserves_limit_cone
+    (limit_cone_is_limit F) (types.limit_cone_is_limit (F ⋙ forget _)) } }
+instance forget_preserves_limits : preserves_limits (forget (Module.{w} R)) :=
+Module.forget_preserves_limits_of_size.{w w}
+section direct_limit
+open module
+variables {ι : Type v}
+variables [dec_ι : decidable_eq ι] [preorder ι]
+variables (G : ι → Type v)
+variables [Π i, add_comm_group (G i)] [Π i, module R (G i)]
+variables (f : Π i j, i ≤ j → G i →ₗ[R] G j) [directed_system G (λ i j h, f i j h)]
+@[simps]
+def direct_limit_diagram : ι ⥤ Module R :=
+{ obj := λ i, Module.of R (G i),
+  map := λ i j hij, f i j hij.le,
+  map_id' := λ i, by { apply linear_map.ext, intro x, apply module.directed_system.map_self },
+  map_comp' := λ i j k hij hjk,
+  begin
+    apply linear_map.ext,
+    intro x,
+    symmetry,
+    apply module.directed_system.map_map
+  end }
+variables [decidable_eq ι]
+@[simps]
+def direct_limit_cocone : cocone (direct_limit_diagram G f) :=
+{ X := Module.of R $ direct_limit G f,
+  ι := { app := module.direct_limit.of R ι G f,
+         naturality' := λ i j hij, by { apply linear_map.ext, intro x, exact direct_limit.of_f } } }
+@[simps]
+def direct_limit_is_colimit [nonempty ι] [is_directed ι (≤)] :
+  is_colimit (direct_limit_cocone G f) :=
+{ desc := λ s, direct_limit.lift R ι G f s.ι.app $ λ i j h x, by { rw [←s.w (hom_of_le h)], refl },
+  fac' := λ s i,
+  begin
+    apply linear_map.ext,
+    intro x,
+    dsimp,
+    exact direct_limit.lift_of s.ι.app _ x,
+  end,
+  uniq' := λ s m h,
+  begin
+    have : s.ι.app = λ i, linear_map.comp m (direct_limit.of R ι (λ i, G i) (λ i j H, f i j H) i),
+    { funext i, rw ← h, refl },
+    apply linear_map.ext,
+    intro x,
+    simp only [this],
+    apply module.direct_limit.lift_unique
+  end }
+end direct_limit
+end Module

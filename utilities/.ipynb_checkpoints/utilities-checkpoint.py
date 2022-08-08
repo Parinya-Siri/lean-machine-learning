@@ -1,32 +1,36 @@
 import os , glob
 import matplotlib.pyplot as plt
-def preprocess(filename, preprocess_path, data_path):
+
+def preprocess(preprocess_path, data_path):
     '''
-    A function that create txt files from .lean files and also remove comments
+    genereate txt files from all lean files in data_path into preprocess_path 
     
-    filename : path of the input file
-    preprocess_path : destination save path
-    data_path : folder path that contains .lean files
-    
-    return : None
     '''
-    save_path = preprocess_path + '/' + filename.replace(data_path, '').replace('.lean', '').replace('/','-')[1:] + '.txt'
-    if os.path.exists(save_path):
-        os.remove(save_path)
-    open(save_path , "x")
-    check = 1
-    current_file = open(save_path, 'a')
-    with open(filename, 'r') as f:
-        for line in f:
-            if '/-' in line:
-                check = 0
-            if '--' in line:
-                check = 0
-            if check == 1 and line != '\n':
-                current_file.write(line)
-            if '-/' in line:
-                check = 1
-        current_file.close()
+    p = os.walk(data_path)
+    fps = []
+    for dirpath, dirnames, filename in p:
+        for f in filename:
+            fp=os.path.join(dirpath,f)
+            fps.append(fp)
+    for filename in fps:
+        save_path = preprocess_path + '/' + filename.replace(data_path, '').replace('.lean', '').replace('/','-')[1:] + '.txt'
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        open(save_path , "x")
+        check = 1
+        current_file = open(save_path, 'a')
+        with open(filename, 'r') as f:
+            for line in f:
+                if '/-' in line:
+                    check = 0
+                if '--' in line:
+                    check = 0
+                if check == 1 and line != '\n':
+                    current_file.write(line)
+                if '-/' in line:
+                    check = 1
+            current_file.close()
+    return fps
         
 def list_lines(text_path):
     '''

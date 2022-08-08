@@ -1,0 +1,18 @@
+import order.complete_lattice
+namespace old_conv
+open tactic monad
+meta instance : monad_fail old_conv :=
+{ fail := λ α s, (λr e, tactic.fail (to_fmt s) : old_conv α), ..old_conv.monad }
+meta instance : has_monad_lift tactic old_conv :=
+⟨λα, lift_tactic⟩
+meta instance (α : Type) : has_coe (tactic α) (old_conv α) :=
+⟨monad_lift⟩
+meta def current_relation : old_conv name := λr lhs, return ⟨r, lhs, none⟩
+meta def head_beta : old_conv unit :=
+λ r e, do n ← tactic.head_beta e, return ⟨(), n, none⟩
+meta def congr_arg : old_conv unit → old_conv unit := congr_core (return ())
+meta def congr_fun : old_conv unit → old_conv unit := λc, congr_core c (return ())
+meta def congr_rule (congr : expr) (cs : list (list expr → old_conv unit)) :
+  old_conv unit :=
+λr lhs, do
+meta structure binder_eq_elim :=

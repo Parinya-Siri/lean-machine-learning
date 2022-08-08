@@ -1,0 +1,31 @@
+import analysis.inner_product_space.projection
+import linear_algebra.orientation
+noncomputable theory
+variables {E : Type*} [inner_product_space ℝ E]
+variables {ι : Type*} [fintype ι] [decidable_eq ι]
+open finite_dimensional
+lemma orthonormal.orthonormal_adjust_to_orientation [nonempty ι] {e : basis ι ℝ E}
+  (h : orthonormal ℝ e) (x : orientation ℝ E ι) : orthonormal ℝ (e.adjust_to_orientation x) :=
+h.orthonormal_of_forall_eq_or_eq_neg (e.adjust_to_orientation_apply_eq_or_eq_neg x)
+protected def orientation.fin_orthonormal_basis {n : ℕ} (hn : 0 < n) (h : finrank ℝ E = n)
+  (x : orientation ℝ E (fin n)) : basis (fin n) ℝ E :=
+begin
+  haveI := fin.pos_iff_nonempty.1 hn,
+  haveI := finite_dimensional_of_finrank (h.symm ▸ hn : 0 < finrank ℝ E),
+  exact (fin_std_orthonormal_basis h).adjust_to_orientation x
+end
+protected lemma orientation.fin_orthonormal_basis_orthonormal {n : ℕ} (hn : 0 < n)
+  (h : finrank ℝ E = n) (x : orientation ℝ E (fin n)) :
+  orthonormal ℝ (x.fin_orthonormal_basis hn h) :=
+begin
+  haveI := fin.pos_iff_nonempty.1 hn,
+  haveI := finite_dimensional_of_finrank (h.symm ▸ hn : 0 < finrank ℝ E),
+  exact (fin_std_orthonormal_basis_orthonormal h).orthonormal_adjust_to_orientation _
+end
+@[simp] lemma orientation.fin_orthonormal_basis_orientation {n : ℕ} (hn : 0 < n)
+  (h : finrank ℝ E = n) (x : orientation ℝ E (fin n)) :
+  (x.fin_orthonormal_basis hn h).orientation = x :=
+begin
+  haveI := fin.pos_iff_nonempty.1 hn,
+  exact basis.orientation_adjust_to_orientation _ _
+end

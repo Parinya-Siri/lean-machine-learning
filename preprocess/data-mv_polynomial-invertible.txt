@@ -1,0 +1,11 @@
+import data.mv_polynomial.basic
+import ring_theory.algebra_tower
+open mv_polynomial
+noncomputable instance mv_polynomial.invertible_C
+  (σ : Type*) {R : Type*} [comm_semiring R] (r : R) [invertible r] :
+  invertible (C r : mv_polynomial σ R) :=
+invertible.map (C : R →+* mv_polynomial σ R) _
+noncomputable instance mv_polynomial.invertible_coe_nat
+  (σ R : Type*) (p : ℕ) [comm_semiring R] [invertible (p : R)] :
+  invertible (p : mv_polynomial σ R) :=
+is_scalar_tower.invertible_algebra_coe_nat R _ _

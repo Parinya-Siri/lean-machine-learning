@@ -1,0 +1,37 @@
+import linear_algebra.clifford_algebra.fold
+import linear_algebra.exterior_algebra.basic
+variables {R M N N' : Type*}
+variables [comm_ring R] [add_comm_group M] [add_comm_group N] [add_comm_group N']
+variables [module R M] [module R N] [module R N']
+def lift_alternating : (Π i, alternating_map R M N (fin i)) →ₗ[R] exterior_algebra R M →ₗ[R] N :=
+begin
+  suffices :
+    (Π i, alternating_map R M N (fin i))
+      →ₗ[R] exterior_algebra R M
+      →ₗ[R] (Π i, alternating_map R M N (fin i)),
+  { refine linear_map.compr₂ this _,
+    refine linear_equiv.to_linear_map _ ∘ₗ linear_map.proj 0,
+    exact alternating_map.const_linear_equiv_of_is_empty.symm },
+  refine clifford_algebra.foldl _ _ _,
+  { refine linear_map.mk₂ R
+      (λ m f i, (f i.succ).curry_left m) (λ m₁ m₂ f, _) (λ c m f, _) (λ m f₁ f₂, _) (λ c m f, _),
+    all_goals {
+      ext i : 1,
+      simp only [map_smul, map_add, pi.add_apply, pi.smul_apply, alternating_map.curry_left_add,
+        alternating_map.curry_left_smul, map_add, map_smul, linear_map.add_apply,
+        linear_map.smul_apply] } },
+@[simps apply symm_apply]
+def lift_alternating_equiv :
+  (Π i, alternating_map R M N (fin i)) ≃ₗ[R] exterior_algebra R M →ₗ[R] N :=
+{ to_fun := lift_alternating,
+  map_add' := map_add _,
+  map_smul' := map_smul _,
+  inv_fun := λ F i, F.comp_alternating_map (ι_multi R i),
+  left_inv := λ f, funext $ λ i, lift_alternating_comp_ι_multi _,
+  right_inv := λ F, (lift_alternating_comp _ _).trans $
+    by rw [lift_alternating_ι_multi, linear_map.comp_id]}
+@[ext]
+lemma lhom_ext ⦃f g : exterior_algebra R M →ₗ[R] N⦄
+  (h : ∀ i, f.comp_alternating_map (ι_multi R i) = g.comp_alternating_map (ι_multi R i)) : f = g :=
+lift_alternating_equiv.symm.injective $ funext h
+end exterior_algebra

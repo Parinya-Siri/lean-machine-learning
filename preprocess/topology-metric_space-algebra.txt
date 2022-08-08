@@ -1,0 +1,40 @@
+import topology.algebra.mul_action
+import topology.metric_space.lipschitz
+open_locale nnreal
+noncomputable theory
+variables (α β : Type*) [pseudo_metric_space α] [pseudo_metric_space β]
+section has_lipschitz_mul
+class has_lipschitz_add [add_monoid β] : Prop :=
+( lipschitz_add : ∃ C, lipschitz_with C (λ p : β × β, p.1 + p.2) )
+@[to_additive] class has_lipschitz_mul [monoid β] : Prop :=
+( lipschitz_mul : ∃ C, lipschitz_with C (λ p : β × β, p.1 * p.2) )
+variables [monoid β]
+@[to_additive "The Lipschitz constant of an `add_monoid` `β` satisfying `has_lipschitz_add`"]
+def has_lipschitz_mul.C [_i : has_lipschitz_mul β] : ℝ≥0 :=
+classical.some _i.lipschitz_mul
+variables {β}
+@[to_additive] lemma lipschitz_with_lipschitz_const_mul_edist [_i : has_lipschitz_mul β] :
+  lipschitz_with (has_lipschitz_mul.C β) (λ p : β × β, p.1 * p.2) :=
+classical.some_spec _i.lipschitz_mul
+variables [has_lipschitz_mul β]
+@[to_additive] lemma lipschitz_with_lipschitz_const_mul :
+  ∀ p q : β × β, dist (p.1 * p.2) (q.1 * q.2) ≤ (has_lipschitz_mul.C β) * dist p q :=
+begin
+  rw ← lipschitz_with_iff_dist_le_mul,
+  exact lipschitz_with_lipschitz_const_mul_edist,
+end
+class has_bounded_smul : Prop :=
+( dist_smul_pair' : ∀ x : α, ∀ y₁ y₂ : β, dist (x • y₁) (x • y₂) ≤ dist x 0 * dist y₁ y₂ )
+( dist_pair_smul' : ∀ x₁ x₂ : α, ∀ y : β, dist (x₁ • y) (x₂ • y) ≤ dist x₁ x₂ * dist y 0 )
+variables {α β} [has_bounded_smul α β]
+lemma dist_smul_pair  (x : α) (y₁ y₂ : β) : dist (x • y₁) (x • y₂) ≤ dist x 0 * dist y₁ y₂ :=
+has_bounded_smul.dist_smul_pair' x y₁ y₂
+lemma dist_pair_smul (x₁ x₂ : α) (y : β) : dist (x₁ • y) (x₂ • y) ≤ dist x₁ x₂ * dist y 0 :=
+has_bounded_smul.dist_pair_smul' x₁ x₂ y
+instance has_bounded_smul.op [has_smul αᵐᵒᵖ β] [is_central_scalar α β] :
+  has_bounded_smul αᵐᵒᵖ β :=
+{ dist_smul_pair' := mul_opposite.rec $ λ x y₁ y₂,
+    by simpa only [op_smul_eq_smul] using dist_smul_pair x y₁ y₂,
+  dist_pair_smul' := mul_opposite.rec $ λ x₁, mul_opposite.rec $ λ x₂ y,
+    by simpa only [op_smul_eq_smul] using dist_pair_smul x₁ x₂ y }
+end has_bounded_smul

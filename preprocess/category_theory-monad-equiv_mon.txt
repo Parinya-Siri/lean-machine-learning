@@ -1,0 +1,55 @@
+import category_theory.monad.basic
+import category_theory.monoidal.End
+import category_theory.monoidal.Mon_
+import category_theory.category.Cat
+namespace category_theory
+open category
+@[simps]
+def to_Mon : monad C → Mon_ (C ⥤ C) := λ M,
+{ X := (M : C ⥤ C),
+  one := M.η,
+  mul := M.μ,
+@[simps]
+def Monad_to_Mon : monad C ⥤ Mon_ (C ⥤ C) :=
+{ obj := to_Mon,
+  map := λ _ _ f, { hom := f.to_nat_trans },
+@[simps]
+def of_Mon : Mon_ (C ⥤ C) → monad C := λ M,
+{ to_functor := M.X,
+  η' := M.one,
+  μ' := M.mul,
+  left_unit' := λ X, by { rw [←M.one.id_hcomp_app, ←nat_trans.comp_app, M.mul_one], refl },
+  right_unit' := λ X, by { rw [←M.one.hcomp_id_app, ←nat_trans.comp_app, M.one_mul], refl },
+  assoc' := λ X, by { rw [←nat_trans.hcomp_id_app, ←nat_trans.comp_app], simp } }
+variable (C)
+@[simps]
+def Mon_to_Monad : Mon_ (C ⥤ C) ⥤ monad C :=
+{ obj := of_Mon,
+  map := λ _ _ f,
+  { app_η' := begin
+      intro X,
+      erw [←nat_trans.comp_app, f.one_hom],
+      refl,
+    end,
+    app_μ' := begin
+      intro X,
+@[simps {rhs_md := semireducible}]
+def counit_iso : Mon_to_Monad C ⋙ Monad_to_Mon C ≅ 𝟭 _ :=
+{ hom := { app := λ _, { hom := 𝟙 _ } },
+  inv := { app := λ _, { hom := 𝟙 _ } },
+@[simps]
+def unit_iso_hom : 𝟭 _ ⟶ Monad_to_Mon C ⋙ Mon_to_Monad C :=
+{ app := λ _, { app := λ _, 𝟙 _ } }
+@[simps]
+def unit_iso_inv : Monad_to_Mon C ⋙ Mon_to_Monad C ⟶ 𝟭 _ :=
+{ app := λ _, { app := λ _, 𝟙 _ } }
+@[simps]
+def unit_iso : 𝟭 _ ≅ Monad_to_Mon C ⋙ Mon_to_Monad C :=
+{ hom := unit_iso_hom,
+  inv := unit_iso_inv,
+@[simps]
+def Monad_Mon_equiv : (monad C) ≌ (Mon_ (C ⥤ C)) :=
+{ functor := Monad_to_Mon _,
+  inverse := Mon_to_Monad _,
+  unit_iso := unit_iso,
+  counit_iso := counit_iso,

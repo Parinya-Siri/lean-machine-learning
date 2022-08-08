@@ -1,0 +1,16 @@
+import meta.expr_lens
+namespace tactic
+open expr
+namespace nth_rewrite
+meta structure cfg extends rewrite_cfg :=
+(try_simp   : bool := ff)
+(discharger : tactic unit := skip)
+meta structure tracked_rewrite :=
+(exp : expr)
+(proof : tactic expr)
+meta def eval (rw : tracked_rewrite) : tactic (expr × expr) :=
+do prf ← rw.proof,
+   return (rw.exp, prf)
+end tracked_rewrite
+end nth_rewrite
+end tactic

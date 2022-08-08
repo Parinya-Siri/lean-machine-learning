@@ -1,0 +1,29 @@
+import data.nat.cast.defs
+universes u
+set_option old_structure_cmd true
+attribute [simp] int.of_nat_eq_coe
+protected def int.cast_def {R : Type u} [has_nat_cast R] [has_neg R] : ℤ → R
+| (n : ℕ) := n
+| -[1+ n] := -(n+1 : ℕ)
+class has_int_cast (R : Type u) :=
+(int_cast : ℤ → R)
+@[protect_proj]
+class add_group_with_one (R : Type u)
+  extends has_int_cast R, add_group R, add_monoid_with_one R :=
+(int_cast := int.cast_def)
+(int_cast_of_nat : ∀ n : ℕ, int_cast n = (n : R) . control_laws_tac)
+(int_cast_neg_succ_of_nat : ∀ n : ℕ, int_cast (-(n+1 : ℕ)) = -((n+1 : ℕ) : R) . control_laws_tac)
+@[protect_proj]
+class add_comm_group_with_one (R : Type u) extends add_comm_group R, add_group_with_one R
+protected def int.cast {R : Type u} [has_int_cast R] (i : ℤ) : R := has_int_cast.int_cast i
+namespace nat
+variables {R : Type u} [add_group_with_one R]
+@[simp, norm_cast] theorem cast_sub {m n} (h : m ≤ n) : ((n - m : ℕ) : R) = n - m :=
+eq_sub_of_add_eq $ by rw [← cast_add, nat.sub_add_cancel h]
+@[simp, norm_cast] theorem cast_pred : ∀ {n}, 0 < n → ((n - 1 : ℕ) : R) = n - 1
+| 0 h := by cases h
+| (n+1) h := by rw [cast_succ, add_sub_cancel]; refl
+end nat
+open nat
+namespace int
+variables {R : Type u} [add_group_with_one R]

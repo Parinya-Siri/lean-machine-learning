@@ -1,0 +1,39 @@
+import algebra.group_power.basic
+import logic.function.iterate
+import group_theory.perm.basic
+import group_theory.group_action.opposite
+open function
+variables {M : Type*} {N : Type*} {G : Type*} {H : Type*}
+lemma hom_coe_pow {F : Type*} [monoid F] (c : F → M → M) (h1 : c 1 = id)
+  (hmul : ∀ f g, c (f * g) = c f ∘ c g) (f : F) : ∀ n, c (f ^ n) = (c f^[n])
+| 0 := by { rw [pow_zero, h1], refl }
+| (n + 1) := by rw [pow_succ, iterate_succ', hmul, hom_coe_pow]
+namespace monoid_hom
+section
+variables [mul_one_class M] [mul_one_class N]
+@[simp, to_additive]
+theorem iterate_map_one (f : M →* M) (n : ℕ) : f^[n] 1 = 1 :=
+iterate_fixed f.map_one n
+@[simp, to_additive]
+theorem iterate_map_mul (f : M →* M) (n : ℕ) (x y) :
+  f^[n] (x * y) = (f^[n] x) * (f^[n] y) :=
+semiconj₂.iterate f.map_mul n x y
+end
+variables [monoid M] [monoid N] [group G] [group H]
+@[simp, to_additive]
+theorem iterate_map_inv (f : G →* G) (n : ℕ) (x) :
+  f^[n] (x⁻¹) = (f^[n] x)⁻¹ :=
+commute.iterate_left f.map_inv n x
+@[simp, to_additive]
+theorem iterate_map_div (f : G →* G) (n : ℕ) (x y) :
+  f^[n] (x / y) = (f^[n] x) / (f^[n] y) :=
+semiconj₂.iterate f.map_div n x y
+theorem iterate_map_pow (f : M →* M) (n : ℕ) (a) (m : ℕ) : f^[n] (a^m) = (f^[n] a)^m :=
+commute.iterate_left (λ x, f.map_pow x m) n a
+theorem iterate_map_zpow (f : G →* G) (n : ℕ) (a) (m : ℤ) : f^[n] (a^m) = (f^[n] a)^m :=
+commute.iterate_left (λ x, f.map_zpow x m) n a
+lemma coe_pow {M} [comm_monoid M] (f : monoid.End M) (n : ℕ) : ⇑(f^n) = (f^[n]) :=
+hom_coe_pow _ rfl (λ f g, rfl) _ _
+end monoid_hom
+lemma monoid.End.coe_pow {M} [monoid M] (f : monoid.End M) (n : ℕ) : ⇑(f^n) = (f^[n]) :=
+hom_coe_pow _ rfl (λ f g, rfl) _ _

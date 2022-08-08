@@ -1,0 +1,85 @@
+import category_theory.preadditive.projective_resolution
+noncomputable theory
+open category_theory
+open category_theory.limits
+universes v u
+namespace category_theory
+variables {C : Type u} [category.{v} C] {D : Type*} [category D]
+def functor.left_derived (F : C ⥤ D) [F.additive] (n : ℕ) : C ⥤ D :=
+projective_resolutions C ⋙ F.map_homotopy_category _ ⋙ homotopy_category.homology_functor D _ n
+@[simps]
+def functor.left_derived_obj_iso (F : C ⥤ D) [F.additive] (n : ℕ)
+  {X : C} (P : ProjectiveResolution X) :
+  (F.left_derived n).obj X ≅
+    (homology_functor D _ n).obj ((F.map_homological_complex _).obj P.complex) :=
+(homotopy_category.homology_functor D _ n).map_iso
+  (homotopy_category.iso_of_homotopy_equiv
+    (F.map_homotopy_equiv (ProjectiveResolution.homotopy_equiv _ P)))
+  ≪≫ (homotopy_category.homology_factors D _ n).app _
+@[simps]
+def functor.left_derived_obj_projective_zero (F : C ⥤ D) [F.additive]
+  (X : C) [projective X] :
+  (F.left_derived 0).obj X ≅ F.obj X :=
+F.left_derived_obj_iso 0 (ProjectiveResolution.self X) ≪≫
+  (homology_functor _ _ _).map_iso ((chain_complex.single₀_map_homological_complex F).app X) ≪≫
+  (chain_complex.homology_functor_0_single₀ D).app (F.obj X)
+open_locale zero_object
+@[simps inv]
+def functor.left_derived_obj_projective_succ (F : C ⥤ D) [F.additive] (n : ℕ)
+  (X : C) [projective X] :
+  (F.left_derived (n+1)).obj X ≅ 0 :=
+F.left_derived_obj_iso (n+1) (ProjectiveResolution.self X) ≪≫
+  (homology_functor _ _ _).map_iso ((chain_complex.single₀_map_homological_complex F).app X) ≪≫
+  (chain_complex.homology_functor_succ_single₀ D n).app (F.obj X) ≪≫
+  (functor.zero_obj _).iso_zero
+lemma functor.left_derived_map_eq (F : C ⥤ D) [F.additive] (n : ℕ) {X Y : C} (f : X ⟶ Y)
+  {P : ProjectiveResolution X} {Q : ProjectiveResolution Y} (g : P.complex ⟶ Q.complex)
+  (w : g ≫ Q.π = P.π ≫ (chain_complex.single₀ C).map f) :
+  (F.left_derived n).map f =
+  (F.left_derived_obj_iso n P).hom ≫
+    (homology_functor D _ n).map ((F.map_homological_complex _).map g) ≫
+    (F.left_derived_obj_iso n Q).inv :=
+begin
+  dsimp only [functor.left_derived, functor.left_derived_obj_iso],
+  dsimp, simp only [category.comp_id, category.id_comp],
+  rw [←homology_functor_map, homotopy_category.homology_functor_map_factors],
+  simp only [←functor.map_comp],
+  congr' 1,
+  apply homotopy_category.eq_of_homotopy,
+  apply functor.map_homotopy,
+  apply homotopy.trans,
+  exact homotopy_category.homotopy_out_map _,
+  apply ProjectiveResolution.lift_homotopy f,
+  { simp, },
+  { simp [w], },
+end
+@[simps]
+def nat_trans.left_derived {F G : C ⥤ D} [F.additive] [G.additive] (α : F ⟶ G) (n : ℕ) :
+  F.left_derived n ⟶ G.left_derived n :=
+whisker_left (projective_resolutions C)
+  (whisker_right (nat_trans.map_homotopy_category α _)
+    (homotopy_category.homology_functor D _ n))
+@[simp] lemma nat_trans.left_derived_id (F : C ⥤ D) [F.additive] (n : ℕ) :
+  nat_trans.left_derived (𝟙 F) n = 𝟙 (F.left_derived n) :=
+by { simp [nat_trans.left_derived], refl, }
+lemma nat_trans.left_derived_eq {F G : C ⥤ D} [F.additive] [G.additive] (α : F ⟶ G) (n : ℕ)
+  {X : C} (P : ProjectiveResolution X) :
+  (nat_trans.left_derived α n).app X =
+    (F.left_derived_obj_iso n P).hom ≫
+      (homology_functor D _ n).map ((nat_trans.map_homological_complex α _).app P.complex) ≫
+        (G.left_derived_obj_iso n P).inv :=
+begin
+  symmetry,
+  dsimp [nat_trans.left_derived, functor.left_derived_obj_iso],
+  simp only [category.comp_id, category.id_comp],
+  rw [←homology_functor_map, homotopy_category.homology_functor_map_factors],
+  simp only [←functor.map_comp],
+  congr' 1,
+  apply homotopy_category.eq_of_homotopy,
+  simp only [nat_trans.map_homological_complex_naturality_assoc,
+    ←functor.map_comp],
+  apply homotopy.comp_left_id,
+  rw [←functor.map_id],
+  apply functor.map_homotopy,
+  apply homotopy_equiv.homotopy_hom_inv_id,
+end

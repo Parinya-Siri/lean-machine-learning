@@ -1,0 +1,34 @@
+import category_theory.closed.cartesian
+import category_theory.limits.shapes.zero_morphisms
+import category_theory.punit
+import category_theory.conj
+universes v u
+noncomputable theory
+namespace category_theory
+open category limits
+variables {C : Type u} [category.{v} C]
+variables [has_finite_products C] [cartesian_closed C]
+def unique_homset_of_initial_iso_terminal [has_initial C] (i : ⊥_ C ≅ ⊤_ C) (X Y : C) :
+  unique (X ⟶ Y) :=
+equiv.unique $
+calc (X ⟶ Y) ≃ (X ⨯ ⊤_ C ⟶ Y) : iso.hom_congr (prod.right_unitor _).symm (iso.refl _)
+         ... ≃ (X ⨯ ⊥_ C ⟶ Y) : iso.hom_congr (prod.map_iso (iso.refl _) i.symm) (iso.refl _)
+         ... ≃ (⊥_ C ⟶ Y ^^ X) : (exp.adjunction _).hom_equiv _ _
+open_locale zero_object
+def unique_homset_of_zero [has_zero_object C] (X Y : C) :
+  unique (X ⟶ Y) :=
+begin
+  haveI : has_initial C := has_zero_object.has_initial,
+  apply unique_homset_of_initial_iso_terminal _ X Y,
+  refine ⟨default, (default : ⊤_ C ⟶ 0) ≫ default, _, _⟩; simp
+end
+local attribute [instance] unique_homset_of_zero
+def equiv_punit [has_zero_object C] : C ≌ discrete punit :=
+equivalence.mk
+  (functor.star C)
+  (functor.from_punit 0)
+  (nat_iso.of_components
+    (λ X, { hom := default, inv := default })
+    (λ X Y f, dec_trivial))
+  (functor.punit_ext _ _)
+end category_theory

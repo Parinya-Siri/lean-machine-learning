@@ -1,0 +1,119 @@
+import algebra.group.semiconj
+import algebra.group_with_zero.basic
+import algebra.hom.aut
+import algebra.hom.group
+import data.fintype.basic
+universes u v
+variables {α : Type u} {β : Type v}
+section monoid
+variables [monoid α] [monoid β]
+def is_conj (a b : α) := ∃ c : αˣ, semiconj_by ↑c a b
+@[refl] lemma is_conj.refl (a : α) : is_conj a a :=
+⟨1, semiconj_by.one_left a⟩
+@[symm] lemma is_conj.symm {a b : α} : is_conj a b → is_conj b a
+| ⟨c, hc⟩ := ⟨c⁻¹, hc.units_inv_symm_left⟩
+lemma is_conj_comm {g h : α} : is_conj g h ↔ is_conj h g :=
+⟨is_conj.symm, is_conj.symm⟩
+@[trans] lemma is_conj.trans {a b c : α} : is_conj a b → is_conj b c → is_conj a c
+| ⟨c₁, hc₁⟩ ⟨c₂, hc₂⟩ := ⟨c₂ * c₁, hc₂.mul_left hc₁⟩
+@[simp] lemma is_conj_iff_eq {α : Type*} [comm_monoid α] {a b : α} : is_conj a b ↔ a = b :=
+⟨λ ⟨c, hc⟩, begin
+  rw [semiconj_by, mul_comm, ← units.mul_inv_eq_iff_eq_mul, mul_assoc, c.mul_inv, mul_one] at hc,
+  exact hc,
+end, λ h, by rw h⟩
+protected lemma monoid_hom.map_is_conj (f : α →* β) {a b : α} : is_conj a b → is_conj (f a) (f b)
+| ⟨c, hc⟩ := ⟨units.map f c, by rw [units.coe_map, semiconj_by, ← f.map_mul, hc.eq, f.map_mul]⟩
+end monoid
+section cancel_monoid
+variables [cancel_monoid α]
+protected def setoid (α : Type*) [monoid α] : setoid α :=
+{ r := is_conj, iseqv := ⟨is_conj.refl, λa b, is_conj.symm, λa b c, is_conj.trans⟩ }
+end is_conj
+local attribute [instance, priority 100] is_conj.setoid
+def conj_classes (α : Type*) [monoid α] : Type* :=
+quotient (is_conj.setoid α)
+namespace conj_classes
+section monoid
+variables [monoid α] [monoid β]
+protected def mk {α : Type*} [monoid α] (a : α) : conj_classes α :=
+⟦a⟧
+instance : inhabited (conj_classes α) := ⟨⟦1⟧⟩
+theorem mk_eq_mk_iff_is_conj {a b : α} :
+  conj_classes.mk a = conj_classes.mk b ↔ is_conj a b :=
+iff.intro quotient.exact quot.sound
+theorem quotient_mk_eq_mk (a : α) : ⟦ a ⟧ = conj_classes.mk a := rfl
+theorem quot_mk_eq_mk (a : α) : quot.mk setoid.r a = conj_classes.mk a := rfl
+theorem forall_is_conj {p : conj_classes α → Prop} :
+  (∀a, p a) ↔ (∀a, p (conj_classes.mk a)) :=
+iff.intro
+  (assume h a, h _)
+  (assume h a, quotient.induction_on a h)
+theorem mk_surjective : function.surjective (@conj_classes.mk α _) :=
+forall_is_conj.2 (λ a, ⟨a, rfl⟩)
+instance : has_one (conj_classes α) := ⟨⟦ 1 ⟧⟩
+theorem one_eq_mk_one : (1 : conj_classes α) = conj_classes.mk 1 := rfl
+lemma exists_rep (a : conj_classes α) : ∃ a0 : α, conj_classes.mk a0 = a :=
+quot.exists_rep a
+def map (f : α →* β) : conj_classes α → conj_classes β :=
+quotient.lift (conj_classes.mk ∘ f) (λ a b ab, mk_eq_mk_iff_is_conj.2 (f.map_is_conj ab))
+lemma map_surjective {f : α →* β} (hf : function.surjective f) :
+  function.surjective (conj_classes.map f) :=
+begin
+  intros b,
+  obtain ⟨b, rfl⟩ := conj_classes.mk_surjective b,
+  obtain ⟨a, rfl⟩ := hf b,
+  exact ⟨conj_classes.mk a, rfl⟩,
+end
+instance [fintype α] [decidable_rel (is_conj : α → α → Prop)] :
+  fintype (conj_classes α) :=
+quotient.fintype (is_conj.setoid α)
+library_note "slow-failing instance priority"
+def mk_equiv : α ≃ conj_classes α :=
+⟨conj_classes.mk, quotient.lift id (λ (a : α) b, is_conj_iff_eq.1), quotient.lift_mk _ _,
+  begin
+    rw [function.right_inverse, function.left_inverse, forall_is_conj],
+    intro x,
+    rw [← quotient_mk_eq_mk, ← quotient_mk_eq_mk, quotient.lift_mk, id.def],
+  end⟩
+end comm_monoid
+end conj_classes
+section monoid
+variables [monoid α]
+def conjugates_of (a : α) : set α := {b | is_conj a b}
+lemma mem_conjugates_of_self {a : α} : a ∈ conjugates_of a := is_conj.refl _
+lemma is_conj.conjugates_of_eq {a b : α} (ab : is_conj a b) :
+  conjugates_of a = conjugates_of b :=
+set.ext (λ g, ⟨λ ag, (ab.symm).trans ag, λ bg, ab.trans bg⟩)
+lemma is_conj_iff_conjugates_of_eq {a b : α} :
+  is_conj a b ↔ conjugates_of a = conjugates_of b :=
+⟨is_conj.conjugates_of_eq, λ h, begin
+  have ha := mem_conjugates_of_self,
+  rwa ← h at ha,
+end⟩
+instance [fintype α] [decidable_rel (is_conj : α → α → Prop)] {a : α} : fintype (conjugates_of a) :=
+@subtype.fintype _ _ (‹decidable_rel is_conj› a) _
+end monoid
+namespace conj_classes
+variables [monoid α]
+local attribute [instance] is_conj.setoid
+def carrier : conj_classes α → set α :=
+quotient.lift conjugates_of (λ (a : α) b ab, is_conj.conjugates_of_eq ab)
+lemma mem_carrier_mk {a : α} : a ∈ carrier (conj_classes.mk a) := is_conj.refl _
+lemma mem_carrier_iff_mk_eq {a : α} {b : conj_classes α} :
+  a ∈ carrier b ↔ conj_classes.mk a = b :=
+begin
+  revert b,
+  rw forall_is_conj,
+  intro b,
+  rw [carrier, eq_comm, mk_eq_mk_iff_is_conj, ← quotient_mk_eq_mk, quotient.lift_mk],
+  refl,
+end
+lemma carrier_eq_preimage_mk {a : conj_classes α} :
+  a.carrier = conj_classes.mk ⁻¹' {a} :=
+set.ext (λ x, mem_carrier_iff_mk_eq)
+section fintype
+variables [fintype α] [decidable_rel (is_conj : α → α → Prop)]
+instance {x : conj_classes α} : fintype (carrier x) :=
+quotient.rec_on_subsingleton x $ λ a, conjugates_of.fintype
+end fintype
+end conj_classes

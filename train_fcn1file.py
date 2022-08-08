@@ -1,5 +1,8 @@
 import torch.optim as optim
-import neuralnetwork.fcn as fcn
+import neuralnetwork.fcn3l as fcn3
+import neuralnetwork.fcn4l as fcn4
+import neuralnetwork.fcn5l as fcn5
+import neuralnetwork.fcn6l as fcn6
 import os , glob
 import utilities.utilities as util
 import torch
@@ -12,32 +15,43 @@ import sys
 
 ############ Set the Hyper parameters ###########
 
-EPOCHS = 200
+EPOCHS = 750
 max_char = 102
 num_lines_predict = 10
-layers = [int(sys.argv[1]),int(sys.argv[2]),int(sys.argv[3])]
 
 ############ Set the Paths ######################
 
 data_path = './matlib'
 preprocess_path = './preprocess'
 
-#### Generate txt files #########################
-data_path = './matlib'
-preprocess_path = './preprocess'
-p = glob.glob(data_path + '/*', recursive = True)
-for path in p:
-    for filename in glob.glob(os.path.join(path, '*.lean')):
-        util.preprocess(filename, preprocess_path, data_path)
+#### Generate txt dataset #########################
+util.preprocess(preprocess_path,data_path)
+###################Set layers##############################
+layers = [int(j) for j in sys.argv[1:]]
+
+################### Choose model ##############################
+if len(sys.argv[1:]) == 3:
+    net = fcn3.Net(layers, num_lines_predict, max_char)
+elif len(sys.argv[1:]) == 4:
+    net = fcn4.Net(layers, num_lines_predict, max_char)
+elif len(sys.argv[1:]) == 5:
+    net = fcn5.Net(layers, num_lines_predict, max_char)
+elif len(sys.argv[1:]) == 6:
+    net = fcn6.Net(layers, num_lines_predict, max_char)
     
-#################################################
-net = fcn.Net(num_lines_predict, layers[0], layers[1], layers[2])
+################### Save Path ##############################
 now = datetime.now()
-save_path = './runs/' + now.strftime("%m-%m-%Y") + '-' + str(layers[0]) + '-' + str(layers[1]) + '-' + str(layers[2])
+save_path = './runs/' + now.strftime("%d-%b-%Y")
+for i in range(len(layers)):
+    save_path += '-'
+    save_path += str(layers[i])
 writer = SummaryWriter(save_path)
 
+################### Train ##############################
 optimizer = optim.Adam(net.parameters(), lr=0.001)
 loss=0
+best_path=save_path + '/epoch-none.pth'
+best_loss=1000
 loss_list = []
 print('training fcn ', layers)
 for epoch in range(EPOCHS):
@@ -59,19 +73,14 @@ for epoch in range(EPOCHS):
         loss.backward()
         optimizer.step()
     writer.add_scalar("Loss/train", loss, epoch)
-    writer.flush()  
-    torch.save(net, save_path + '/epoch-'+ epoch + '.pth')
-    print('loss for ',epoch,' epochs : ',loss)
-    # loss_list.append(loss.item())
-  
+    writer.flush()
     
-############ Save ###################
-# now = datetime.now()
-# k=0
-# while os.path.exists('./neuralnetwork/'+now.strftime("%m-%m-%Y")+'_'+str(k)+".txt"):
-#     k+=1
-# ppp = './neuralnetwork/'+'fcn'+now.strftime("%m-%m-%Y")+'_'+str(k)
-# with open(ppp+".txt", "w") as f:
-#     for s in loss_list:
-#         f.write(str(s) +"\n")
-# torch.save(net,ppp+'.pth')
+    if loss.item() < best_loss:
+        if os.path.exists(best_path):
+            os.remove(best_path)
+        best_path = save_path + '/epoch-'+ str(epoch) + '.pth'
+        torch.save(net, best_path)
+        best_loss = loss
+        print('saving best model')
+    
+    print('loss for ',epoch,' epochs : ',loss)

@@ -1,0 +1,28 @@
+import tactic.nth_rewrite
+declare_trace rewrite_search
+namespace tactic.rewrite_search
+@[derive decidable_eq, derive inhabited]
+inductive side
+| L
+| R
+meta def side.to_string : side → format
+| side.L := "L"
+| side.R := "R"
+def side.to_xhs : side → string
+| side.L := "lhs"
+| side.R := "rhs"
+meta instance side.has_to_format : has_to_format side := ⟨side.to_string⟩
+meta structure how := (rule_index : ℕ) (location : ℕ) (addr : option (list expr_lens.dir))
+meta def how.to_string : how → format
+| h := format!"rewrite {h.rule_index} {h.location} {h.addr.iget.to_string}"
+meta instance how.has_to_format : has_to_format how := ⟨how.to_string⟩
+meta structure rewrite :=
+(exp   : expr)
+meta structure proof_unit :=
+(proof : expr)
+(side  : side)
+(steps : list how)
+meta structure config extends tactic.nth_rewrite.cfg :=
+(max_iterations     : ℕ := 5000)
+(explain_using_conv : bool := tt)
+end tactic.rewrite_search

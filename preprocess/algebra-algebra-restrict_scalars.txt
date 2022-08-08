@@ -1,0 +1,62 @@
+import algebra.algebra.tower
+variables (R S M A : Type*)
+@[nolint unused_arguments]
+def restrict_scalars (R S M : Type*) : Type* := M
+instance [I : inhabited M] : inhabited (restrict_scalars R S M) := I
+instance [I : add_comm_monoid M] : add_comm_monoid (restrict_scalars R S M) := I
+instance [I : add_comm_group M] : add_comm_group (restrict_scalars R S M) := I
+section module
+section
+variables [semiring S] [add_comm_monoid M]
+def restrict_scalars.module_orig [I : module S M] :
+  module S (restrict_scalars R S M) := I
+variables [comm_semiring R] [algebra R S]
+section
+local attribute [instance] restrict_scalars.module_orig
+instance [module S M] : module R (restrict_scalars R S M) :=
+module.comp_hom M (algebra_map R S)
+instance [module S M] : is_scalar_tower R S (restrict_scalars R S M) :=
+⟨λ r S M, by { rw [algebra.smul_def, mul_smul], refl }⟩
+end
+instance restrict_scalars.op_module [module Sᵐᵒᵖ M] : module Rᵐᵒᵖ (restrict_scalars R S M) :=
+begin
+  letI : module Sᵐᵒᵖ (restrict_scalars R S M) := ‹module Sᵐᵒᵖ M›,
+  exact module.comp_hom M (algebra_map R S).op
+end
+instance restrict_scalars.is_central_scalar [module S M] [module Sᵐᵒᵖ M] [is_central_scalar S M] :
+  is_central_scalar R (restrict_scalars R S M) :=
+{ op_smul_eq_smul := λ r x, (op_smul_eq_smul (algebra_map R S r) (_ : M) : _)}
+def restrict_scalars.lsmul [module S M] : S →ₐ[R] module.End R (restrict_scalars R S M) :=
+begin
+@[simps] def restrict_scalars.add_equiv : restrict_scalars R S M ≃+ M :=
+add_equiv.refl M
+variables [comm_semiring R] [semiring S] [algebra R S] [module S M]
+lemma restrict_scalars_smul_def (c : R) (x : restrict_scalars R S M) :
+  c • x = ((algebra_map R S c) • x : M) := rfl
+@[simp] lemma restrict_scalars.add_equiv_map_smul (t : R) (x : restrict_scalars R S M) :
+  restrict_scalars.add_equiv R S M (t • x)
+  = (algebra_map R S t) • restrict_scalars.add_equiv R S M x :=
+rfl
+end module
+section algebra
+instance [I : semiring A] : semiring (restrict_scalars R S A) := I
+instance [I : ring A] : ring (restrict_scalars R S A) := I
+instance [I : comm_semiring A] : comm_semiring (restrict_scalars R S A) := I
+instance [I : comm_ring A] : comm_ring (restrict_scalars R S A) := I
+variables [semiring A]
+def restrict_scalars.ring_equiv : restrict_scalars R S A ≃+* A := ring_equiv.refl _
+variables [comm_semiring S] [algebra S A] [comm_semiring R] [algebra R S]
+@[simp] lemma restrict_scalars.ring_equiv_map_smul (r : R) (x : restrict_scalars R S A) :
+  restrict_scalars.ring_equiv R S A (r • x)
+  = (algebra_map R S r) • restrict_scalars.ring_equiv R S A x :=
+rfl
+instance : algebra R (restrict_scalars R S A) :=
+{ smul := (•),
+  commutes' := λ r x, algebra.commutes _ _,
+  smul_def' := λ _ _, algebra.smul_def _ _,
+  .. (algebra_map S A).comp (algebra_map R S) }
+@[simp] lemma restrict_scalars.ring_equiv_algebra_map (r : R) :
+  restrict_scalars.ring_equiv R S A (algebra_map R (restrict_scalars R S A) r) =
+    algebra_map S A (algebra_map R S r) :=
+rfl
+end algebra

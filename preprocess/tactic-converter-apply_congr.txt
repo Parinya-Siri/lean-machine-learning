@@ -1,0 +1,9 @@
+import tactic.interactive
+import tactic.converter.interactive
+open tactic
+namespace conv.interactive
+open interactive interactive.types lean.parser
+local postfix `?`:9001 := optional
+meta def apply_congr (q : parse texpr?) : conv unit :=
+do
+  congr_lemmas ← match q with

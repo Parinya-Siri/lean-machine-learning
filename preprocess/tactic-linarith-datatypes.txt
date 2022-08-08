@@ -1,0 +1,173 @@
+import tactic.linarith.lemmas
+import tactic.ring
+declare_trace linarith
+open native
+namespace linarith
+meta def linarith_trace {α} [has_to_tactic_format α] (s : α) : tactic unit :=
+tactic.when_tracing `linarith (tactic.trace s)
+meta def linarith_trace_proofs (s : string := "") (l : list expr) : tactic unit :=
+tactic.when_tracing `linarith $ do
+  tactic.trace s, l.mmap tactic.infer_type >>= tactic.trace
+@[reducible]
+def linexp : Type := list (ℕ × ℤ)
+namespace linexp
+meta def add : linexp → linexp → linexp
+| [] a := a
+| a [] := a
+| (a@(n1,z1)::t1) (b@(n2,z2)::t2) :=
+  if n1 < n2 then b::add (a::t1) t2
+  else if n2 < n1 then a::add t1 (b::t2)
+  else let sum := z1 + z2 in if sum = 0 then add t1 t2 else (n1, sum)::add t1 t2
+def scale (c : ℤ) (l : linexp) : linexp :=
+if c = 0 then []
+else if c = 1 then l
+else l.map $ λ ⟨n, z⟩, (n, z*c)
+def get (n : ℕ) : linexp → option ℤ
+| [] := none
+| ((a, b)::t) :=
+  if a < n then none
+  else if a = n then some b
+  else get t
+def contains (n : ℕ) : linexp → bool := option.is_some ∘ get n
+def zfind (n : ℕ) (l : linexp) : ℤ :=
+match l.get n with
+| none := 0
+| some v := v
+end
+def vars (l : linexp) : list ℕ :=
+l.map prod.fst
+def cmp : linexp → linexp → ordering
+| [] [] := ordering.eq
+| [] _ := ordering.lt
+| _ [] := ordering.gt
+| ((n1,z1)::t1) ((n2,z2)::t2) :=
+  if n1 < n2 then ordering.lt
+  else if n2 < n1 then ordering.gt
+  else if z1 < z2 then ordering.lt
+  else if z2 < z1 then ordering.gt
+  else cmp t1 t2
+end linexp
+@[derive decidable_eq, derive inhabited]
+inductive ineq : Type
+| eq | le | lt
+namespace ineq
+def max : ineq → ineq → ineq
+| lt a := lt
+| a lt := lt
+| le a := le
+| a le := le
+| eq eq := eq
+def cmp : ineq → ineq → ordering
+| eq eq := ordering.eq
+| eq _ := ordering.lt
+| le le := ordering.eq
+| le lt := ordering.lt
+| lt lt := ordering.eq
+| _ _ := ordering.gt
+def to_string : ineq → string
+| eq := "="
+| le := "≤"
+| lt := "<"
+meta def to_const_mul_nm : ineq → name
+| lt := ``mul_neg
+| le := ``mul_nonpos
+| eq := ``mul_eq
+instance : has_to_string ineq := ⟨ineq.to_string⟩
+meta instance : has_to_format ineq := ⟨λ i, ineq.to_string i⟩
+end ineq
+@[derive inhabited]
+structure comp : Type :=
+(str : ineq)
+(coeffs : linexp)
+def comp.vars : comp → list ℕ :=
+linexp.vars ∘ comp.coeffs
+def comp.coeff_of (c : comp) (a : ℕ) : ℤ :=
+c.coeffs.zfind a
+def comp.scale (c : comp) (n : ℕ) : comp :=
+{ c with coeffs := c.coeffs.scale n }
+meta def comp.add (c1 c2 : comp) : comp :=
+⟨c1.str.max c2.str, c1.coeffs.add c2.coeffs⟩
+meta def comp.cmp : comp → comp → ordering
+| ⟨str1, coeffs1⟩ ⟨str2, coeffs2⟩ :=
+  match str1.cmp str2 with
+  | ordering.lt := ordering.lt
+  | ordering.gt := ordering.gt
+  | ordering.eq := coeffs1.cmp coeffs2
+  end
+meta def comp.is_contr (c : comp) : bool := c.coeffs.empty ∧ c.str = ineq.lt
+meta instance comp.to_format : has_to_format comp :=
+⟨λ p, to_fmt p.coeffs ++ to_string p.str ++ "0"⟩
+meta structure preprocessor : Type :=
+(name : string)
+(transform : expr → tactic (list expr))
+meta structure global_preprocessor : Type :=
+(name : string)
+(transform : list expr → tactic (list expr))
+meta def branch : Type := expr × list expr
+meta structure global_branching_preprocessor : Type :=
+(name : string)
+(transform : list expr → tactic (list branch))
+meta def preprocessor.globalize (pp : preprocessor) : global_preprocessor :=
+{ name := pp.name,
+  transform := list.mfoldl (λ ret e, do l' ← pp.transform e, return (l' ++ ret)) [] }
+meta def global_preprocessor.branching (pp : global_preprocessor) : global_branching_preprocessor :=
+{ name := pp.name,
+  transform := λ l, do g ← tactic.get_goal, singleton <$> prod.mk g <$> pp.transform l }
+meta def global_branching_preprocessor.process (pp : global_branching_preprocessor)
+  (l : list expr) :
+  tactic (list branch) :=
+do l ← pp.transform l,
+   when (l.length > 1) $
+     linarith_trace format!"Preprocessing: {pp.name} has branched, with branches:",
+   l.mmap' $ λ l, tactic.set_goals [l.1] >>
+     linarith_trace_proofs (to_string format!"Preprocessing: {pp.name}") l.2,
+   return l
+meta instance preprocessor_to_gb_preprocessor :
+  has_coe preprocessor global_branching_preprocessor :=
+⟨global_preprocessor.branching ∘ preprocessor.globalize⟩
+meta instance global_preprocessor_to_gb_preprocessor :
+  has_coe global_preprocessor global_branching_preprocessor :=
+⟨global_preprocessor.branching⟩
+meta def certificate_oracle : Type :=
+list comp → ℕ → tactic (rb_map ℕ ℕ)
+meta structure linarith_config : Type :=
+(discharger : tactic unit := `[ring])
+(restrict_type : option Type := none)
+(restrict_type_reflect : reflected _ restrict_type . tactic.apply_instance)
+(exfalso : bool := tt)
+(transparency : tactic.transparency := reducible)
+(split_hypotheses : bool := tt)
+(split_ne : bool := ff)
+(preprocessors : option (list global_branching_preprocessor) := none)
+(oracle : option certificate_oracle := none)
+meta def linarith_config.update_reducibility (cfg : linarith_config) (reduce_semi : bool) :
+  linarith_config :=
+if reduce_semi then { cfg with transparency := semireducible, discharger := `[ring!] }
+else cfg
+open tactic
+meta def get_rel_sides : expr → tactic (expr × expr)
+| `(%%a < %%b) := return (a, b)
+| `(%%a ≤ %%b) := return (a, b)
+| `(%%a = %%b) := return (a, b)
+| `(%%a ≥ %%b) := return (a, b)
+| `(%%a > %%b) := return (a, b)
+| _ := tactic.failed
+meta def parse_into_comp_and_expr : expr → option (ineq × expr)
+| `(%%e < 0) := (ineq.lt, e)
+| `(%%e ≤ 0) := (ineq.le, e)
+| `(%%e = 0) := (ineq.eq, e)
+| _ := none
+meta def mk_single_comp_zero_pf (c : ℕ) (h : expr) : tactic (ineq × expr) :=
+do tp ← infer_type h,
+  some (iq, e) ← return $ parse_into_comp_and_expr tp,
+  if c = 0 then
+    do e' ← mk_app ``zero_mul [e], return (ineq.eq, e')
+  else if c = 1 then return (iq, h)
+  else
+    do tp ← (prod.snd <$> (infer_type h >>= get_rel_sides)) >>= infer_type,
+       c ← tp.of_nat c,
+       cpos ← to_expr ``(%%c > 0),
+       (_, ex) ← solve_aux cpos `[norm_num, done],
+       e' ← mk_app iq.to_const_mul_nm [h, ex],
+       return (iq, e')
+end linarith

@@ -1,0 +1,38 @@
+import topology.category.Profinite
+import topology.discrete_quotient
+noncomputable theory
+open category_theory
+namespace Profinite
+universe u
+variables (X : Profinite.{u})
+def fintype_diagram : discrete_quotient X ⥤ Fintype :=
+{ obj := λ S, Fintype.of S,
+  map := λ S T f, discrete_quotient.of_le f.le }
+abbreviation diagram : discrete_quotient X ⥤ Profinite :=
+X.fintype_diagram ⋙ Fintype.to_Profinite
+def as_limit_cone : category_theory.limits.cone X.diagram :=
+{ X := X,
+  π := { app := λ S, ⟨S.proj, S.proj_is_locally_constant.continuous⟩ } }
+instance is_iso_as_limit_cone_lift :
+  is_iso ((limit_cone_is_limit X.diagram).lift X.as_limit_cone) :=
+is_iso_of_bijective _
+begin
+  refine ⟨λ a b, _, λ a, _⟩,
+  { intro h,
+    refine discrete_quotient.eq_of_proj_eq (λ S, _),
+    apply_fun (λ f : (limit_cone X.diagram).X, f.val S) at h,
+    exact h },
+  { obtain ⟨b, hb⟩ := discrete_quotient.exists_of_compat
+      (λ S, a.val S) (λ _ _ h, a.prop (hom_of_le h)),
+    refine ⟨b, _⟩,
+    ext S : 3,
+    apply hb },
+end
+def iso_as_limit_cone_lift : X ≅ (limit_cone X.diagram).X :=
+as_iso $ (limit_cone_is_limit _).lift X.as_limit_cone
+def as_limit_cone_iso : X.as_limit_cone ≅ limit_cone _ :=
+limits.cones.ext (iso_as_limit_cone_lift _) (λ _, rfl)
+def as_limit : category_theory.limits.is_limit X.as_limit_cone :=
+limits.is_limit.of_iso_limit (limit_cone_is_limit _) X.as_limit_cone_iso.symm
+def lim : limits.limit_cone X.diagram := ⟨X.as_limit_cone, X.as_limit⟩
+end Profinite

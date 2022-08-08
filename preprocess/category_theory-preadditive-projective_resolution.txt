@@ -1,0 +1,178 @@
+import category_theory.preadditive.projective
+import algebra.homology.single
+import algebra.homology.homotopy_category
+noncomputable theory
+open category_theory
+open category_theory.limits
+universes v u
+namespace category_theory
+variables {C : Type u} [category.{v} C]
+open projective
+section
+variables [has_zero_object C] [has_zero_morphisms C] [has_equalizers C] [has_images C]
+@[nolint has_inhabited_instance]
+structure ProjectiveResolution (Z : C) :=
+(complex : chain_complex C ℕ)
+(π : homological_complex.hom complex ((chain_complex.single₀ C).obj Z))
+(projective : ∀ n, projective (complex.X n) . tactic.apply_instance)
+(exact₀ : exact (complex.d 1 0) (π.f 0))
+(exact : ∀ n, exact (complex.d (n+2) (n+1)) (complex.d (n+1) n))
+(epi : epi (π.f 0) . tactic.apply_instance)
+attribute [instance] ProjectiveResolution.projective ProjectiveResolution.epi
+class has_projective_resolution (Z : C) : Prop :=
+(out [] : nonempty (ProjectiveResolution Z))
+section
+variables (C)
+class has_projective_resolutions : Prop :=
+(out : ∀ Z : C, has_projective_resolution Z)
+attribute [instance, priority 100] has_projective_resolutions.out
+end
+namespace ProjectiveResolution
+@[simp] lemma π_f_succ {Z : C} (P : ProjectiveResolution Z) (n : ℕ) :
+  P.π.f (n+1) = 0 :=
+begin
+  apply zero_of_target_iso_zero,
+  dsimp, refl,
+end
+@[simp] lemma complex_d_comp_π_f_zero {Z : C} (P : ProjectiveResolution Z) :
+  P.complex.d 1 0 ≫ P.π.f 0 = 0 :=
+P.exact₀.w
+@[simp] lemma complex_d_succ_comp {Z : C} (P : ProjectiveResolution Z) (n : ℕ) :
+  P.complex.d (n + 2) (n + 1) ≫ P.complex.d (n + 1) n = 0 :=
+(P.exact _).w
+instance {Z : C} (P : ProjectiveResolution Z) (n : ℕ) : category_theory.epi (P.π.f n) :=
+by cases n; apply_instance
+def self (Z : C) [category_theory.projective Z] : ProjectiveResolution Z :=
+{ complex := (chain_complex.single₀ C).obj Z,
+  π := 𝟙 ((chain_complex.single₀ C).obj Z),
+  projective := λ n, begin
+    cases n,
+    { dsimp, apply_instance, },
+    { dsimp, apply_instance, },
+  end,
+  exact₀ := by { dsimp, exact exact_zero_mono _ },
+  exact := λ n, by { dsimp, exact exact_of_zero _ _ },
+  epi := by { dsimp, apply_instance, }, }
+def lift_f_zero {Y Z : C} (f : Y ⟶ Z) (P : ProjectiveResolution Y) (Q : ProjectiveResolution Z) :
+  P.complex.X 0 ⟶ Q.complex.X 0 :=
+factor_thru (P.π.f 0 ≫ f) (Q.π.f 0)
+def lift_f_one {Y Z : C} (f : Y ⟶ Z) (P : ProjectiveResolution Y) (Q : ProjectiveResolution Z) :
+  P.complex.X 1 ⟶ Q.complex.X 1 :=
+exact.lift (P.complex.d 1 0 ≫ lift_f_zero f P Q) (Q.complex.d 1 0) (Q.π.f 0) Q.exact₀
+  (by simp [lift_f_zero, P.exact₀.w_assoc])
+@[simp] lemma lift_f_one_zero_comm
+  {Y Z : C} (f : Y ⟶ Z) (P : ProjectiveResolution Y) (Q : ProjectiveResolution Z) :
+  lift_f_one f P Q ≫ Q.complex.d 1 0 = P.complex.d 1 0 ≫ lift_f_zero f P Q :=
+begin
+  dsimp [lift_f_zero, lift_f_one],
+  simp,
+end
+def lift_f_succ {Y Z : C} (P : ProjectiveResolution Y) (Q : ProjectiveResolution Z)
+  (n : ℕ) (g : P.complex.X n ⟶ Q.complex.X n) (g' : P.complex.X (n+1) ⟶ Q.complex.X (n+1))
+  (w : g' ≫ Q.complex.d (n+1) n = P.complex.d (n+1) n ≫ g) :
+  Σ' g'' : P.complex.X (n+2) ⟶ Q.complex.X (n+2),
+    g'' ≫ Q.complex.d (n+2) (n+1) = P.complex.d (n+2) (n+1) ≫ g' :=
+⟨exact.lift
+  (P.complex.d (n+2) (n+1) ≫ g') ((Q.complex.d (n+2) (n+1))) (Q.complex.d (n+1) n) (Q.exact _)
+  (by simp [w]), (by simp)⟩
+def lift {Y Z : C} (f : Y ⟶ Z) (P : ProjectiveResolution Y) (Q : ProjectiveResolution Z) :
+  P.complex ⟶ Q.complex :=
+chain_complex.mk_hom _ _ (lift_f_zero f _ _) (lift_f_one f _ _) (lift_f_one_zero_comm f _ _)
+  (λ n ⟨g, g', w⟩, lift_f_succ P Q n g g' w)
+@[simp, reassoc]
+lemma lift_commutes
+  {Y Z : C} (f : Y ⟶ Z) (P : ProjectiveResolution Y) (Q : ProjectiveResolution Z) :
+  lift f P Q ≫ Q.π = P.π ≫ (chain_complex.single₀ C).map f :=
+begin
+  ext n,
+  rcases n with (_|_|n);
+  { dsimp [lift, lift_f_zero, lift_f_one], simp, }
+end
+def lift_homotopy_zero_zero {Y Z : C} {P : ProjectiveResolution Y} {Q : ProjectiveResolution Z}
+  (f : P.complex ⟶ Q.complex)
+  (comm : f ≫ Q.π = 0) : P.complex.X 0 ⟶ Q.complex.X 1 :=
+exact.lift (f.f 0) (Q.complex.d 1 0) (Q.π.f 0) Q.exact₀
+  (congr_fun (congr_arg homological_complex.hom.f comm) 0)
+def lift_homotopy_zero_one {Y Z : C} {P : ProjectiveResolution Y} {Q : ProjectiveResolution Z}
+  (f : P.complex ⟶ Q.complex)
+  (comm : f ≫ Q.π = 0) : P.complex.X 1 ⟶ Q.complex.X 2 :=
+exact.lift
+  (f.f 1 - P.complex.d 1 0 ≫ lift_homotopy_zero_zero f comm) (Q.complex.d 2 1) (Q.complex.d 1 0)
+  (Q.exact _) (by simp [lift_homotopy_zero_zero])
+def lift_homotopy_zero_succ {Y Z : C} {P : ProjectiveResolution Y} {Q : ProjectiveResolution Z}
+  (f : P.complex ⟶ Q.complex) (n : ℕ)
+  (g : P.complex.X n ⟶ Q.complex.X (n + 1)) (g' : P.complex.X (n + 1) ⟶ Q.complex.X (n + 2))
+  (w : f.f (n + 1) = P.complex.d (n + 1) n ≫ g + g' ≫ Q.complex.d (n + 2) (n + 1)) :
+  P.complex.X (n + 2) ⟶ Q.complex.X (n + 3) :=
+exact.lift
+  (f.f (n+2) - P.complex.d (n+2) (n+1) ≫ g') (Q.complex.d (n+3) (n+2)) (Q.complex.d (n+2) (n+1))
+  (Q.exact _) (by simp [w])
+def lift_homotopy_zero {Y Z : C} {P : ProjectiveResolution Y} {Q : ProjectiveResolution Z}
+  (f : P.complex ⟶ Q.complex)
+  (comm : f ≫ Q.π = 0) :
+  homotopy f 0 :=
+homotopy.mk_inductive _ (lift_homotopy_zero_zero f comm) (by simp [lift_homotopy_zero_zero])
+  (lift_homotopy_zero_one f comm) (by simp [lift_homotopy_zero_one])
+  (λ n ⟨g, g', w⟩, ⟨lift_homotopy_zero_succ f n g g' w, by simp [lift_homotopy_zero_succ, w]⟩)
+def lift_homotopy {Y Z : C} (f : Y ⟶ Z) {P : ProjectiveResolution Y} {Q : ProjectiveResolution Z}
+  (g h : P.complex ⟶ Q.complex)
+  (g_comm : g ≫ Q.π = P.π ≫ (chain_complex.single₀ C).map f)
+  (h_comm : h ≫ Q.π = P.π ≫ (chain_complex.single₀ C).map f) :
+  homotopy g h :=
+homotopy.equiv_sub_zero.inv_fun (lift_homotopy_zero _ (by simp [g_comm, h_comm]))
+def lift_id_homotopy (X : C) (P : ProjectiveResolution X) :
+  homotopy (lift (𝟙 X) P P) (𝟙 P.complex) :=
+by { apply lift_homotopy (𝟙 X); simp, }
+def lift_comp_homotopy {X Y Z : C} (f : X ⟶ Y) (g : Y ⟶ Z)
+  (P : ProjectiveResolution X) (Q : ProjectiveResolution Y) (R : ProjectiveResolution Z) :
+  homotopy (lift (f ≫ g) P R) (lift f P Q ≫ lift g Q R) :=
+by { apply lift_homotopy (f ≫ g); simp, }
+def homotopy_equiv {X : C} (P Q : ProjectiveResolution X) :
+  homotopy_equiv P.complex Q.complex :=
+{ hom := lift (𝟙 X) P Q,
+  inv := lift (𝟙 X) Q P,
+  homotopy_hom_inv_id := begin
+    refine (lift_comp_homotopy (𝟙 X) (𝟙 X) P Q P).symm.trans _,
+    simp [category.id_comp],
+    apply lift_id_homotopy,
+  end,
+  homotopy_inv_hom_id := begin
+    refine (lift_comp_homotopy (𝟙 X) (𝟙 X) Q P Q).symm.trans _,
+    simp [category.id_comp],
+    apply lift_id_homotopy,
+  end, }
+@[simp, reassoc] lemma homotopy_equiv_hom_π {X : C} (P Q : ProjectiveResolution X) :
+  (homotopy_equiv P Q).hom ≫ Q.π = P.π :=
+by simp [homotopy_equiv]
+@[simp, reassoc] lemma homotopy_equiv_inv_π {X : C} (P Q : ProjectiveResolution X) :
+  (homotopy_equiv P Q).inv ≫ P.π = Q.π :=
+by simp [homotopy_equiv]
+end ProjectiveResolution
+section
+variables [has_zero_morphisms C] [has_zero_object C] [has_equalizers C] [has_images C]
+abbreviation projective_resolution (Z : C) [has_projective_resolution Z] : chain_complex C ℕ :=
+(has_projective_resolution.out Z).some.complex
+abbreviation projective_resolution.π (Z : C) [has_projective_resolution Z] :
+  projective_resolution Z ⟶ (chain_complex.single₀ C).obj Z :=
+(has_projective_resolution.out Z).some.π
+abbreviation projective_resolution.lift {X Y : C} (f : X ⟶ Y)
+  [has_projective_resolution X] [has_projective_resolution Y] :
+  projective_resolution X ⟶ projective_resolution Y :=
+ProjectiveResolution.lift f _ _
+end
+variables (C) [preadditive C] [has_zero_object C] [has_equalizers C] [has_images C]
+  [has_projective_resolutions C]
+def projective_resolutions : C ⥤ homotopy_category C (complex_shape.down ℕ) :=
+{ obj := λ X, (homotopy_category.quotient _ _).obj (projective_resolution X),
+  map := λ X Y f, (homotopy_category.quotient _ _).map (projective_resolution.lift f),
+  map_id' := λ X, begin
+    rw ←(homotopy_category.quotient _ _).map_id,
+    apply homotopy_category.eq_of_homotopy,
+    apply ProjectiveResolution.lift_id_homotopy,
+  end,
+  map_comp' := λ X Y Z f g, begin
+    rw ←(homotopy_category.quotient _ _).map_comp,
+    apply homotopy_category.eq_of_homotopy,
+    apply ProjectiveResolution.lift_comp_homotopy,
+  end, }
+end category_theory

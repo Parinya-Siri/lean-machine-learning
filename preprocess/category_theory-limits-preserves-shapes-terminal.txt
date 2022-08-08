@@ -1,0 +1,114 @@
+import category_theory.limits.shapes.terminal
+import category_theory.limits.preserves.basic
+universes v v₁ v₂ u u₁ u₂
+noncomputable theory
+open category_theory category_theory.category category_theory.limits
+variables {C : Type u₁} [category.{v₁} C]
+variables {D : Type u₂} [category.{v₂} D]
+variables (G : C ⥤ D)
+namespace category_theory.limits
+variables (X : C)
+section terminal
+def is_limit_map_cone_empty_cone_equiv :
+  is_limit (G.map_cone (as_empty_cone.{v₁} X)) ≃ is_terminal (G.obj X) :=
+is_limit_empty_cone_equiv D _ _ (eq_to_iso rfl)
+def is_terminal.is_terminal_obj [preserves_limit (functor.empty.{0} C) G]
+  (l : is_terminal X) : is_terminal (G.obj X) :=
+is_limit_map_cone_empty_cone_equiv G X (preserves_limit.preserves l)
+def is_terminal.is_terminal_of_obj [reflects_limit (functor.empty.{0} C) G]
+  (l : is_terminal (G.obj X)) : is_terminal X :=
+reflects_limit.reflects ((is_limit_map_cone_empty_cone_equiv G X).symm l)
+variables [has_terminal C]
+def is_limit_of_has_terminal_of_preserves_limit [preserves_limit (functor.empty.{0} C) G] :
+  is_terminal (G.obj (⊤_ C)) :=
+terminal_is_terminal.is_terminal_obj G (⊤_ C)
+lemma has_terminal_of_has_terminal_of_preserves_limit [preserves_limit (functor.empty.{0} C) G] :
+  has_terminal D :=
+⟨λ F,
+begin
+  haveI := has_limit.mk ⟨_, is_limit_of_has_terminal_of_preserves_limit G⟩,
+  apply has_limit_of_iso F.unique_from_empty.symm,
+end⟩
+variable [has_terminal D]
+def preserves_terminal.of_iso_comparison
+  [i : is_iso (terminal_comparison G)] : preserves_limit (functor.empty C) G :=
+begin
+  apply preserves_limit_of_preserves_limit_cone terminal_is_terminal,
+  apply (is_limit_map_cone_empty_cone_equiv _ _).symm _,
+  apply is_limit.of_point_iso (limit.is_limit (functor.empty.{0} D)),
+  apply i,
+end
+def preserves_terminal_of_is_iso
+  (f : G.obj (⊤_ C) ⟶ ⊤_ D) [i : is_iso f] : preserves_limit (functor.empty C) G :=
+begin
+  rw subsingleton.elim f (terminal_comparison G) at i,
+  exactI preserves_terminal.of_iso_comparison G,
+end
+def preserves_terminal_of_iso
+  (f : G.obj (⊤_ C) ≅ ⊤_ D) : preserves_limit (functor.empty C) G :=
+preserves_terminal_of_is_iso G f.hom
+variables [preserves_limit (functor.empty.{0} C) G]
+def preserves_terminal.iso : G.obj (⊤_ C) ≅ ⊤_ D :=
+(is_limit_of_has_terminal_of_preserves_limit G).cone_point_unique_up_to_iso (limit.is_limit _)
+@[simp]
+lemma preserves_terminal.iso_hom : (preserves_terminal.iso G).hom = terminal_comparison G :=
+rfl
+instance : is_iso (terminal_comparison G) :=
+begin
+  rw ← preserves_terminal.iso_hom,
+  apply_instance,
+end
+end terminal
+section initial
+def is_colimit_map_cocone_empty_cocone_equiv :
+  is_colimit (G.map_cocone (as_empty_cocone.{v₁} X)) ≃ is_initial (G.obj X) :=
+is_colimit_empty_cocone_equiv D _ _ (eq_to_iso rfl)
+def is_initial.is_initial_obj [preserves_colimit (functor.empty.{0} C) G]
+  (l : is_initial X) : is_initial (G.obj X) :=
+is_colimit_map_cocone_empty_cocone_equiv G X (preserves_colimit.preserves l)
+def is_initial.is_initial_of_obj [reflects_colimit (functor.empty.{0} C) G]
+  (l : is_initial (G.obj X)) : is_initial X :=
+reflects_colimit.reflects ((is_colimit_map_cocone_empty_cocone_equiv G X).symm l)
+variables [has_initial C]
+def is_colimit_of_has_initial_of_preserves_colimit [preserves_colimit (functor.empty.{0} C) G] :
+  is_initial (G.obj (⊥_ C)) :=
+initial_is_initial.is_initial_obj G (⊥_ C)
+lemma has_initial_of_has_initial_of_preserves_colimit [preserves_colimit (functor.empty.{0} C) G] :
+  has_initial D :=
+⟨λ F,
+begin
+  haveI := has_colimit.mk ⟨_, is_colimit_of_has_initial_of_preserves_colimit G⟩,
+  apply has_colimit_of_iso F.unique_from_empty,
+end⟩
+variable [has_initial D]
+def preserves_initial.of_iso_comparison
+  [i : is_iso (initial_comparison G)] : preserves_colimit (functor.empty C) G :=
+begin
+  apply preserves_colimit_of_preserves_colimit_cocone initial_is_initial,
+  apply (is_colimit_map_cocone_empty_cocone_equiv _ _).symm _,
+  apply is_colimit.of_point_iso (colimit.is_colimit (functor.empty.{0} D)),
+  apply i,
+end
+def preserves_initial_of_is_iso
+  (f : ⊥_ D ⟶ G.obj (⊥_ C)) [i : is_iso f] : preserves_colimit (functor.empty C) G :=
+begin
+  rw subsingleton.elim f (initial_comparison G) at i,
+  exactI preserves_initial.of_iso_comparison G,
+end
+def preserves_initial_of_iso
+  (f : ⊥_ D ≅ G.obj (⊥_ C)) : preserves_colimit (functor.empty C) G :=
+preserves_initial_of_is_iso G f.hom
+variables [preserves_colimit (functor.empty.{0} C) G]
+def preserves_initial.iso : G.obj (⊥_ C) ≅ ⊥_ D :=
+(is_colimit_of_has_initial_of_preserves_colimit G).cocone_point_unique_up_to_iso
+  (colimit.is_colimit _)
+@[simp]
+lemma preserves_initial.iso_hom : (preserves_initial.iso G).inv = initial_comparison G :=
+rfl
+instance : is_iso (initial_comparison G) :=
+begin
+  rw ← preserves_initial.iso_hom,
+  apply_instance,
+end
+end initial
+end category_theory.limits

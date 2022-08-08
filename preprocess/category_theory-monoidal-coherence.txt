@@ -1,0 +1,95 @@
+import category_theory.monoidal.free.coherence
+import category_theory.bicategory.coherence_tactic
+noncomputable theory
+universes v u
+open category_theory
+open category_theory.free_monoidal_category
+variables {C : Type u} [category.{v} C] [monoidal_category C]
+namespace category_theory.monoidal_category
+class lift_obj (X : C) :=
+(lift : free_monoidal_category C)
+instance lift_obj_unit : lift_obj (𝟙_ C) := { lift := unit, }
+instance lift_obj_tensor (X Y : C) [lift_obj X] [lift_obj Y] : lift_obj (X ⊗ Y) :=
+{ lift := lift_obj.lift X ⊗ lift_obj.lift Y, }
+@[priority 100]
+instance lift_obj_of (X : C) : lift_obj X := { lift := of X, }
+class lift_hom {X Y : C} [lift_obj X] [lift_obj Y] (f : X ⟶ Y) :=
+(lift : lift_obj.lift X ⟶ lift_obj.lift Y)
+instance lift_hom_id (X : C) [lift_obj X] : lift_hom (𝟙 X) :=
+{ lift := 𝟙 _, }
+instance lift_hom_left_unitor_hom (X : C) [lift_obj X] : lift_hom (λ_ X).hom :=
+{ lift := (λ_ (lift_obj.lift X)).hom, }
+instance lift_hom_left_unitor_inv (X : C) [lift_obj X] : lift_hom (λ_ X).inv :=
+{ lift := (λ_ (lift_obj.lift X)).inv, }
+instance lift_hom_right_unitor_hom (X : C) [lift_obj X] : lift_hom (ρ_ X).hom :=
+{ lift := (ρ_ (lift_obj.lift X)).hom, }
+instance lift_hom_right_unitor_inv (X : C) [lift_obj X] : lift_hom (ρ_ X).inv :=
+{ lift := (ρ_ (lift_obj.lift X)).inv, }
+instance lift_hom_associator_hom (X Y Z : C) [lift_obj X] [lift_obj Y] [lift_obj Z] :
+  lift_hom (α_ X Y Z).hom :=
+{ lift := (α_ (lift_obj.lift X) (lift_obj.lift Y) (lift_obj.lift Z)).hom, }
+instance lift_hom_associator_inv (X Y Z : C) [lift_obj X] [lift_obj Y] [lift_obj Z] :
+  lift_hom (α_ X Y Z).inv :=
+{ lift := (α_ (lift_obj.lift X) (lift_obj.lift Y) (lift_obj.lift Z)).inv, }
+instance lift_hom_comp {X Y Z : C} [lift_obj X] [lift_obj Y] [lift_obj Z] (f : X ⟶ Y) (g : Y ⟶ Z)
+  [lift_hom f] [lift_hom g] : lift_hom (f ≫ g) :=
+{ lift := lift_hom.lift f ≫ lift_hom.lift g }
+instance lift_hom_tensor {W X Y Z : C} [lift_obj W] [lift_obj X] [lift_obj Y] [lift_obj Z]
+  (f : W ⟶ X) (g : Y ⟶ Z) [lift_hom f] [lift_hom g] : lift_hom (f ⊗ g) :=
+{ lift := lift_hom.lift f ⊗ lift_hom.lift g }
+def monoidal_iso (X Y : C) [lift_obj X] [lift_obj Y] [monoidal_coherence X Y] : X ≅ Y :=
+as_iso (monoidal_coherence.hom X Y)
+example (X : C) : X ≅ (X ⊗ (𝟙_ C ⊗ 𝟙_ C)) := monoidal_iso _ _
+example (X1 X2 X3 X4 X5 X6 X7 X8 X9 : C) :
+  (𝟙_ C ⊗ (X1 ⊗ X2 ⊗ ((X3 ⊗ X4) ⊗ X5)) ⊗ X6 ⊗ (X7 ⊗ X8 ⊗ X9)) ≅
+  (X1 ⊗ (X2 ⊗ X3) ⊗ X4 ⊗ (X5 ⊗ (𝟙_ C ⊗ X6) ⊗ X7) ⊗ X8 ⊗ X9) :=
+monoidal_iso _ _
+def monoidal_comp {W X Y Z : C} [lift_obj X] [lift_obj Y]
+  [monoidal_coherence X Y] (f : W ⟶ X) (g : Y ⟶ Z) : W ⟶ Z :=
+f ≫ monoidal_coherence.hom X Y ≫ g
+def monoidal_iso_comp {W X Y Z : C} [lift_obj X] [lift_obj Y]
+  [monoidal_coherence X Y] (f : W ≅ X) (g : Y ≅ Z) : W ≅ Z :=
+f ≪≫ as_iso (monoidal_coherence.hom X Y) ≪≫ g
+meta def mk_project_map_expr (e : expr) : tactic expr :=
+  to_expr ``(category_theory.free_monoidal_category.project_map _root_.id _ _
+    (category_theory.monoidal_category.lift_hom.lift %%e))
+meta def monoidal_coherence : tactic unit :=
+do
+  o ← get_options, set_options $ o.set_nat `class.instance_max_depth 128,
+  try `[dsimp],
+  `(%%lhs = %%rhs) ← target,
+  project_map_lhs ← mk_project_map_expr lhs,
+  project_map_rhs ← mk_project_map_expr rhs,
+  to_expr  ``(%%project_map_lhs = %%project_map_rhs) >>= tactic.change,
+  congr
+meta def pure_coherence : tactic unit := monoidal_coherence <|> bicategorical_coherence
+example (X₁ X₂ : C) :
+  ((λ_ (𝟙_ C)).inv ⊗ 𝟙 (X₁ ⊗ X₂)) ≫ (α_ (𝟙_ C) (𝟙_ C) (X₁ ⊗ X₂)).hom ≫
+    (𝟙 (𝟙_ C) ⊗ (α_ (𝟙_ C) X₁ X₂).inv) =
+  𝟙 (𝟙_ C) ⊗ ((λ_ X₁).inv ⊗ 𝟙 X₂) :=
+by pure_coherence
+namespace coherence
+meta def liftable_prefixes : tactic unit :=
+do
+  o ← get_options, set_options $ o.set_nat `class.instance_max_depth 128,
+  try `[simp only [monoidal_comp, category_theory.category.assoc]] >>
+    `[apply (cancel_epi (𝟙 _)).1; try { apply_instance }] >>
+    try `[simp only [tactic.coherence.assoc_lift_hom, tactic.bicategory.coherence.assoc_lift_hom₂]]
+example {W X Y Z : C} (f : Y ⟶ Z) (g) (w : false) : (λ_ _).hom ≫ f = g :=
+begin
+  liftable_prefixes,
+  guard_target (𝟙 _ ≫ (λ_ _).hom) ≫ f = (𝟙 _) ≫ g,
+  cases w,
+end
+lemma insert_id_lhs {C : Type*} [category C] {X Y : C} (f g : X ⟶ Y) (w : f ≫ 𝟙 _ = g) : f = g :=
+by simpa using w
+lemma insert_id_rhs {C : Type*} [category C] {X Y : C} (f g : X ⟶ Y) (w : f = g ≫ 𝟙 _) : f = g :=
+by simpa using w
+end coherence
+open coherence
+meta def coherence_loop : tactic unit :=
+do
+meta def coherence : tactic unit :=
+do
+  try `[simp only [bicategorical_comp]],
+  try `[simp only [monoidal_comp]],

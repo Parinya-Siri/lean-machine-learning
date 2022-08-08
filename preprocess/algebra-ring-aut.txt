@@ -1,0 +1,22 @@
+import algebra.hom.aut
+import algebra.ring.equiv
+@[reducible] def ring_aut (R : Type*) [has_mul R] [has_add R] := ring_equiv R R
+namespace ring_aut
+variables (R : Type*) [has_mul R] [has_add R]
+instance : group (ring_aut R) :=
+by refine_struct
+{ mul := λ g h, ring_equiv.trans h g,
+  one := ring_equiv.refl R,
+  inv := ring_equiv.symm,
+  div := _,
+  npow := @npow_rec _ ⟨ring_equiv.refl R⟩ ⟨λ g h, ring_equiv.trans h g⟩,
+  zpow := @zpow_rec _ ⟨ring_equiv.refl R⟩ ⟨λ g h, ring_equiv.trans h g⟩ ⟨ring_equiv.symm⟩ };
+intros; ext; try { refl }; apply equiv.left_inv
+instance : inhabited (ring_aut R) := ⟨1⟩
+def to_add_aut : ring_aut R →* add_aut R :=
+by refine_struct { to_fun := ring_equiv.to_add_equiv }; intros; refl
+def to_mul_aut : ring_aut R →* mul_aut R :=
+by refine_struct { to_fun := ring_equiv.to_mul_equiv }; intros; refl
+def to_perm : ring_aut R →* equiv.perm R :=
+by refine_struct { to_fun := ring_equiv.to_equiv }; intros; refl
+end ring_aut

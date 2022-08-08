@@ -1,0 +1,57 @@
+import topology.homotopy.basic
+universes u v w
+variables {X : Type u} {Y : Type v} {Z : Type w}
+variables [topological_space X] [topological_space Y] [topological_space Z]
+namespace continuous_map
+@[ext]
+structure homotopy_equiv (X : Type u) (Y : Type v) [topological_space X] [topological_space Y] :=
+(to_fun : C(X, Y))
+(inv_fun : C(Y, X))
+(left_inv : (inv_fun.comp to_fun).homotopic (continuous_map.id X))
+(right_inv : (to_fun.comp inv_fun).homotopic (continuous_map.id Y))
+localized "infix ` ≃ₕ `:25 := continuous_map.homotopy_equiv" in continuous_map
+namespace homotopy_equiv
+instance : has_coe_to_fun (homotopy_equiv X Y) (λ _, X → Y) := ⟨λ h, h.to_fun⟩
+@[simp]
+lemma to_fun_eq_coe (h : homotopy_equiv X Y) : (h.to_fun : X → Y) = h := rfl
+@[continuity]
+lemma continuous (h : homotopy_equiv X Y) : continuous h := h.to_fun.continuous
+end homotopy_equiv
+end continuous_map
+open_locale continuous_map
+namespace homeomorph
+def to_homotopy_equiv (h : X ≃ₜ Y) : X ≃ₕ Y :=
+{ to_fun := ⟨h⟩,
+  inv_fun := ⟨h.symm⟩,
+  left_inv := by { convert continuous_map.homotopic.refl _, ext, simp },
+  right_inv := by { convert continuous_map.homotopic.refl _, ext, simp } }
+@[simp]
+lemma coe_to_homotopy_equiv (h : X ≃ₜ Y) : ⇑(h.to_homotopy_equiv) = h := rfl
+end homeomorph
+namespace continuous_map
+namespace homotopy_equiv
+def symm (h : X ≃ₕ Y) : Y ≃ₕ X :=
+{ to_fun := h.inv_fun,
+  inv_fun := h.to_fun,
+  left_inv := h.right_inv,
+  right_inv := h.left_inv }
+@[simp]
+lemma coe_inv_fun (h : homotopy_equiv X Y) : (⇑h.inv_fun : Y → X) = ⇑h.symm := rfl
+def simps.apply (h : X ≃ₕ Y) : X → Y := h
+def simps.symm_apply (h : X ≃ₕ Y) : Y → X := h.symm
+initialize_simps_projections homotopy_equiv (to_fun_to_fun -> apply,
+  inv_fun_to_fun -> symm_apply, -to_fun, -inv_fun)
+@[simps]
+def refl (X : Type u) [topological_space X] : X ≃ₕ X :=
+(homeomorph.refl X).to_homotopy_equiv
+instance : inhabited (homotopy_equiv unit unit) := ⟨refl unit⟩
+@[simps]
+def trans (h₁ : X ≃ₕ Y) (h₂ : Y ≃ₕ Z) : X ≃ₕ Z :=
+{ to_fun := h₂.to_fun.comp h₁.to_fun,
+  inv_fun := h₁.inv_fun.comp h₂.inv_fun,
+  left_inv := begin
+    refine homotopic.trans _ h₁.left_inv,
+    change ((h₁.inv_fun.comp h₂.inv_fun).comp (h₂.to_fun.comp h₁.to_fun)) with
+      h₁.inv_fun.comp ((h₂.inv_fun.comp h₂.to_fun).comp h₁.to_fun),
+    refine homotopic.hcomp _ (homotopic.refl _),
+    refine homotopic.trans ((homotopic.refl _).hcomp h₂.left_inv) _,

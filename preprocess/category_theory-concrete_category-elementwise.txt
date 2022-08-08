@@ -1,0 +1,8 @@
+import tactic.elementwise
+import category_theory.limits.has_limits
+import category_theory.limits.shapes.kernels
+open category_theory category_theory.limits
+attribute [elementwise]
+  cone.w limit.lift_π limit.w cocone.w colimit.ι_desc colimit.w
+  kernel.lift_ι cokernel.π_desc
+  kernel.condition cokernel.condition

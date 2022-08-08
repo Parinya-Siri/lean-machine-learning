@@ -1,0 +1,92 @@
+import topology.uniform_space.separation
+import topology.uniform_space.uniform_convergence
+open_locale classical uniformity topological_space filter
+open filter uniform_space set
+variables {α β γ : Type*} [uniform_space α] [uniform_space β]
+lemma compact_space_uniformity [compact_space α] [separated_space α] : 𝓤 α = ⨆ x : α, 𝓝 (x, x) :=
+begin
+  symmetry, refine le_antisymm supr_nhds_le_uniformity _,
+  by_contra H,
+  obtain ⟨V, hV, h⟩ : ∃ V : set (α × α), (∀ x : α, V ∈ 𝓝 (x, x)) ∧ 𝓤 α ⊓ 𝓟 Vᶜ ≠ ⊥,
+  { simpa [le_iff_forall_inf_principal_compl] using H },
+  let F := 𝓤 α ⊓ 𝓟 Vᶜ,
+  haveI : ne_bot F := ⟨h⟩,
+  obtain ⟨⟨x, y⟩, hx⟩ : ∃ (p : α × α), cluster_pt p F :=
+    cluster_point_of_compact F,
+  have : cluster_pt (x, y) (𝓤 α) :=
+    hx.of_inf_left,
+  obtain rfl : x = y := eq_of_uniformity_inf_nhds this,
+  have : cluster_pt (x, x) (𝓟 Vᶜ) :=
+   hx.of_inf_right,
+  have : (x, x) ∉ interior V,
+  { have : (x, x) ∈ closure Vᶜ, by rwa mem_closure_iff_cluster_pt,
+    rwa closure_compl at this },
+  have : (x, x) ∈ interior V,
+  { rw mem_interior_iff_mem_nhds,
+    exact hV x },
+  contradiction
+end
+lemma unique_uniformity_of_compact_t2 [t : topological_space γ] [compact_space γ]
+[t2_space γ] {u u' : uniform_space γ}
+(h : u.to_topological_space = t) (h' : u'.to_topological_space = t) : u = u' :=
+begin
+  apply uniform_space_eq,
+  change uniformity _ = uniformity _,
+  haveI : @compact_space γ u.to_topological_space, { rw h ; assumption },
+  haveI : @compact_space γ u'.to_topological_space, { rw h' ; assumption },
+  haveI : @separated_space γ u, { rwa [separated_iff_t2, h] },
+  haveI : @separated_space γ u', { rwa [separated_iff_t2, h'] },
+  rw [compact_space_uniformity, compact_space_uniformity, h, h']
+end
+def uniform_space_of_compact_t2 [topological_space γ] [compact_space γ] [t2_space γ] :
+  uniform_space γ :=
+{ uniformity := ⨆ x, 𝓝 (x, x),
+  refl := begin
+    simp_rw [filter.principal_le_iff, mem_supr],
+    rintros V V_in ⟨x, _⟩ ⟨⟩,
+    exact mem_of_mem_nhds (V_in x),
+  end,
+  symm := begin
+    refine le_of_eq _,
+    rw map_supr,
+    congr' with x : 1,
+    erw [nhds_prod_eq, ← prod_comm],
+  end,
+  comp := begin
+lemma compact_space.uniform_continuous_of_continuous [compact_space α] [separated_space α]
+  {f : α → β} (h : continuous f) : uniform_continuous f :=
+calc
+map (prod.map f f) (𝓤 α) = map (prod.map f f) (⨆ x, 𝓝 (x, x))  : by rw compact_space_uniformity
+                     ... =  ⨆ x, map (prod.map f f) (𝓝 (x, x)) : by rw map_supr
+                     ... ≤ ⨆ x, 𝓝 (f x, f x)     : supr_mono (λ x, (h.prod_map h).continuous_at)
+                     ... ≤ ⨆ y, 𝓝 (y, y)         : supr_comp_le (λ y, 𝓝 (y, y)) f
+                     ... ≤ 𝓤 β                   : supr_nhds_le_uniformity
+lemma is_compact.uniform_continuous_on_of_continuous' {s : set α} {f : α → β}
+  (hs : is_compact s) (hs' : is_separated s) (hf : continuous_on f s) : uniform_continuous_on f s :=
+begin
+  rw uniform_continuous_on_iff_restrict,
+  rw is_separated_iff_induced at hs',
+  rw is_compact_iff_compact_space at hs,
+  rw continuous_on_iff_continuous_restrict at hf,
+  resetI,
+  exact compact_space.uniform_continuous_of_continuous hf,
+end
+lemma is_compact.uniform_continuous_on_of_continuous [separated_space α] {s : set α} {f : α → β}
+  (hs : is_compact s) (hf : continuous_on f s) : uniform_continuous_on f s :=
+hs.uniform_continuous_on_of_continuous' (is_separated_of_separated_space s) hf
+lemma continuous_on.tendsto_uniformly [locally_compact_space α] [compact_space β]
+  [separated_space β] [uniform_space γ] {f : α → β → γ} {x : α} {U : set α}
+  (hxU : U ∈ 𝓝 x) (hU : is_separated U) (h : continuous_on ↿f (U ×ˢ (univ : set β))) :
+  tendsto_uniformly f (f x) (𝓝 x) :=
+begin
+  rcases locally_compact_space.local_compact_nhds _ _ hxU with ⟨K, hxK, hKU, hK⟩,
+  have : uniform_continuous_on ↿f (K ×ˢ (univ : set β)),
+  { refine is_compact.uniform_continuous_on_of_continuous' (hK.prod compact_univ) _
+      (h.mono $ prod_mono hKU subset.rfl),
+    exact (hU.mono hKU).prod (is_separated_of_separated_space _) },
+  exact this.tendsto_uniformly hxK
+end
+lemma continuous.tendsto_uniformly [separated_space α] [locally_compact_space α]
+  [compact_space β] [separated_space β] [uniform_space γ]
+  (f : α → β → γ) (h : continuous ↿f) (x : α) : tendsto_uniformly f (f x) (𝓝 x) :=
+h.continuous_on.tendsto_uniformly univ_mem $ is_separated_of_separated_space _

@@ -1,0 +1,531 @@
+import data.list.defs
+import data.nat.psub
+universes u
+inductive ordnode (α : Type u) : Type u
+| nil {} : ordnode
+| node (size : ℕ) (l : ordnode) (x : α) (r : ordnode) : ordnode
+namespace ordnode
+variable {α : Type u}
+instance : has_emptyc (ordnode α) := ⟨nil⟩
+instance : inhabited (ordnode α) := ⟨nil⟩
+@[inline] def delta := 3
+@[inline] def ratio := 2
+@[inline] protected def singleton (a : α) : ordnode α := node 1 nil a nil
+local prefix `ι`:max := ordnode.singleton
+instance : has_singleton α (ordnode α) := ⟨ordnode.singleton⟩
+@[inline, simp] def size : ordnode α → ℕ
+| nil := 0
+| (node sz _ _ _) := sz
+@[inline] def empty : ordnode α → bool
+| nil := tt
+| (node _ _ _ _) := ff
+@[simp] def dual : ordnode α → ordnode α
+| nil := nil
+| (node s l x r) := node s (dual r) x (dual l)
+@[inline, reducible] def node' (l : ordnode α) (x : α) (r : ordnode α) : ordnode α :=
+node (size l + size r + 1) l x r
+def repr {α} [has_repr α] : ordnode α → string
+| nil := "∅"
+| (node _ l x r) := "(" ++ repr l ++ " " ++ _root_.repr x ++ " " ++ repr r ++ ")"
+instance {α} [has_repr α] : has_repr (ordnode α) := ⟨repr⟩
+      exact if lrs < ratio * lls then
+        node (ls + rs + 1) ll lx (node (rs + lrs + 1) lr x r)
+      else
+        node (ls + rs + 1)
+          (node (lls + size lrl + 1) ll lx lrl) lrx
+          (node (size lrr + rs + 1) lrr x r) } }
+end
+def balance_r (l : ordnode α) (x : α) (r : ordnode α) : ordnode α :=
+by clean begin
+  cases id l with ls,
+  { cases id r with rs rl rx rr,
+    { exact ι x },
+    { cases id rr with rrs,
+      { cases rl with _ _ rlx,
+        { exact node 2 nil x r },
+        { exact node 3 (ι x) rlx (ι rx) } },
+      { cases id rl with rls rll rlx rlr,
+        { exact node 3 (ι x) rx rr },
+        { exact if rls < ratio * rrs then
+            node (rs+1) (node (rls+1) nil x rl) rx rr
+          else
+            node (rs+1)
+              (node (size rll + 1) nil x rll) rlx
+              (node (size rlr + rrs + 1) rlr rx rr) } } } },
+  { cases id r with rs rl rx rr,
+    { exact node (ls+1) l x nil },
+    { refine if rs > delta * ls then _ else node (ls + rs + 1) l x r,
+      exact if rls < ratio * rrs then
+        node (ls + rs + 1) (node (ls + rls + 1) l x rl) rx rr
+      else
+        node (ls + rs + 1)
+          (node (ls + size rll + 1) l x rll) rlx
+          (node (size rlr + rrs + 1) rlr rx rr) } }
+end
+def balance (l : ordnode α) (x : α) (r : ordnode α) : ordnode α :=
+by clean begin
+  cases id l with ls ll lx lr,
+  { cases id r with rs rl rx rr,
+    { exact ι x },
+    { cases id rl with rls rll rlx rlr,
+      { cases id rr,
+        { exact node 2 nil x r },
+        { exact node 3 (ι x) rx rr } },
+      { cases id rr with rrs,
+        { exact node 3 (ι x) rlx (ι rx) },
+        { exact if rls < ratio * rrs then
+            node (rs+1) (node (rls+1) nil x rl) rx rr
+          else
+            node (rs+1)
+              (node (size rll + 1) nil x rll) rlx
+              (node (size rlr + rrs + 1) rlr rx rr) } } } },
+  { cases id r with rs rl rx rr,
+    { cases id ll with lls,
+      { cases lr with _ _ lrx,
+        { exact node 2 l x nil },
+        { exact node 3 (ι lx) lrx (ι x) } },
+      { cases id lr with lrs lrl lrx lrr,
+        { exact node 3 ll lx (ι x) },
+        { exact if lrs < ratio * lls then
+            node (ls+1) ll lx (node (lrs+1) lr x nil)
+          else
+            node (ls+1)
+              (node (lls + size lrl + 1) ll lx lrl) lrx
+              (node (size lrr + 1) lrr x nil) } } },
+    { refine
+        if delta * ls < rs then _ else
+        if delta * rs < ls then _ else
+        node (ls+rs+1) l x r,
+        exact if rls < ratio * rrs then
+          node (ls+rs+1) (node (ls+rls+1) l x rl) rx rr
+        else
+          node (ls+rs+1)
+            (node (ls + size rll + 1) l x rll) rlx
+            (node (size rlr + rrs + 1) rlr rx rr) },
+        exact if lrs < ratio * lls then
+          node (ls+rs+1) ll lx (node (lrs+rs+1) lr x r)
+        else
+          node (ls+rs+1)
+            (node (lls + size lrl + 1) ll lx lrl) lrx
+            (node (size lrr + rs + 1) lrr x r) } } }
+end
+def all (P : α → Prop) : ordnode α → Prop
+| nil := true
+| (node _ l x r) := all l ∧ P x ∧ all r
+instance all.decidable {P : α → Prop} [decidable_pred P] (t) : decidable (all P t) :=
+by induction t; dunfold all; resetI; apply_instance
+def any (P : α → Prop) : ordnode α → Prop
+| nil := false
+| (node _ l x r) := any l ∨ P x ∨ any r
+instance any.decidable {P : α → Prop} [decidable_pred P] (t) : decidable (any P t) :=
+by induction t; dunfold any; resetI; apply_instance
+def emem (x : α) : ordnode α → Prop := any (eq x)
+instance emem.decidable [decidable_eq α] (x : α) : ∀ t, decidable (emem x t) :=
+any.decidable
+def amem [has_le α] (x : α) : ordnode α → Prop := any (λ y, x ≤ y ∧ y ≤ x)
+instance amem.decidable [has_le α] [@decidable_rel α (≤)] (x : α) : ∀ t, decidable (amem x t) :=
+any.decidable
+def find_min' : ordnode α → α → α
+| nil x := x
+| (node _ l x r) _ := find_min' l x
+def find_min : ordnode α → option α
+| nil := none
+| (node _ l x r) := some (find_min' l x)
+def find_max' : α → ordnode α → α
+| x nil := x
+| _ (node _ l x r) := find_max' x r
+def find_max : ordnode α → option α
+| nil := none
+| (node _ l x r) := some (find_max' x r)
+def erase_min : ordnode α → ordnode α
+| nil := nil
+| (node _ nil x r) := r
+| (node _ l x r) := balance_r (erase_min l) x r
+def erase_max : ordnode α → ordnode α
+| nil := nil
+| (node _ l x nil) := l
+| (node _ l x r) := balance_l l x (erase_max r)
+def split_min' : ordnode α → α → ordnode α → α × ordnode α
+| nil x r := (x, r)
+| (node _ ll lx lr) x r :=
+  let (xm, l') := split_min' ll lx lr in
+  (xm, balance_r l' x r)
+def split_min : ordnode α → option (α × ordnode α)
+| nil := none
+| (node _ l x r) := split_min' l x r
+def split_max' : ordnode α → α → ordnode α → ordnode α × α
+| l x nil := (l, x)
+| l x (node _ rl rx rr) :=
+  let (r', xm) := split_max' rl rx rr in
+  (balance_l l x r', xm)
+def split_max : ordnode α → option (ordnode α × α)
+| nil := none
+| (node _ x l r) := split_max' x l r
+def glue : ordnode α → ordnode α → ordnode α
+| nil r := r
+| l@(node _ _ _ _) nil := l
+| l@(node sl ll lx lr) r@(node sr rl rx rr) :=
+  if sl > sr then
+    let (l', m) := split_max' ll lx lr in balance_r l' m r
+  else
+    let (m, r') := split_min' rl rx rr in balance_l l m r'
+def merge (l : ordnode α) : ordnode α → ordnode α :=
+ordnode.rec_on l (λ r, r) $ λ ls ll lx lr IHll IHlr r,
+ordnode.rec_on r (node ls ll lx lr) $ λ rs rl rx rr IHrl IHrr,
+if delta * ls < rs then
+  balance_l IHrl rx rr
+else if delta * rs < ls then
+  balance_r ll lx (IHlr $ node rs rl rx rr)
+else glue (node ls ll lx lr) (node rs rl rx rr)
+def insert_max : ordnode α → α → ordnode α
+| nil x := ι x
+| (node _ l y r) x := balance_r l y (insert_max r x)
+def insert_min (x : α) : ordnode α → ordnode α
+| nil := ι x
+| (node _ l y r) := balance_r (insert_min l) y r
+def link (l : ordnode α) (x : α) : ordnode α → ordnode α :=
+ordnode.rec_on l (insert_min x) $ λ ls ll lx lr IHll IHlr r,
+ordnode.rec_on r (insert_max l x) $ λ rs rl rx rr IHrl IHrr,
+if delta * ls < rs then
+  balance_l IHrl rx rr
+else if delta * rs < ls then
+  balance_r ll lx (IHlr r)
+else node' l x r
+def filter (p : α → Prop) [decidable_pred p] : ordnode α → ordnode α
+| nil := nil
+| (node _ l x r) :=
+  if p x then link (filter l) x (filter r)
+  else merge (filter l) (filter r)
+def partition (p : α → Prop) [decidable_pred p] : ordnode α → ordnode α × ordnode α
+| nil := (nil, nil)
+| (node _ l x r) :=
+  let (l₁, l₂) := partition l, (r₁, r₂) := partition r in
+  if p x then (link l₁ x r₁, merge l₂ r₂)
+  else (merge l₁ r₁, link l₂ x r₂)
+def map {β} (f : α → β) : ordnode α → ordnode β
+| nil := nil
+| (node s l x r) := node s (map l) (f x) (map r)
+def fold {β} (z : β) (f : β → α → β → β) : ordnode α → β
+| nil := z
+| (node _ l x r) := f (fold l) x (fold r)
+def foldl {β} (f : β → α → β) : β → ordnode α → β
+| z nil := z
+| z (node _ l x r) := foldl (f (foldl z l) x) r
+def foldr {β} (f : α → β → β) : ordnode α → β → β
+| nil z := z
+| (node _ l x r) z := foldr l (f x (foldr r z))
+def to_list (t : ordnode α) : list α := foldr list.cons t []
+def to_rev_list (t : ordnode α) : list α := foldl (flip list.cons) [] t
+instance [has_to_string α] : has_to_string (ordnode α) :=
+⟨λ t, "{" ++ string.intercalate ", " (t.to_list.map to_string) ++ "}"⟩
+meta instance [has_to_format α] : has_to_format (ordnode α) :=
+⟨λ t, "{" ++ format.intercalate ", " (t.to_list.map to_fmt) ++ "}"⟩
+def equiv (t₁ t₂ : ordnode α) : Prop :=
+t₁.size = t₂.size ∧ t₁.to_list = t₂.to_list
+instance [decidable_eq α] : decidable_rel (@equiv α) := λ t₁ t₂, and.decidable
+def powerset (t : ordnode α) : ordnode (ordnode α) :=
+insert_min nil $ foldr (λ x ts, glue (insert_min (ι x) (map (insert_min x) ts)) ts) t nil
+protected def prod {β} (t₁ : ordnode α) (t₂ : ordnode β) : ordnode (α × β) :=
+fold nil (λ s₁ a s₂, merge s₁ $ merge (map (prod.mk a) t₂) s₂) t₁
+protected def copair {β} (t₁ : ordnode α) (t₂ : ordnode β) : ordnode (α ⊕ β) :=
+merge (map sum.inl t₁) (map sum.inr t₂)
+def pmap {P : α → Prop} {β} (f : ∀ a, P a → β) : ∀ t : ordnode α, all P t → ordnode β
+| nil _ := nil
+| (node s l x r) ⟨hl, hx, hr⟩ := node s (pmap l hl) (f x hx) (pmap r hr)
+def attach' {P : α → Prop} : ∀ t, all P t → ordnode {a // P a} := pmap subtype.mk
+def nth : ordnode α → ℕ → option α
+| nil i := none
+| (node _ l x r) i :=
+  match nat.psub' i (size l) with
+  | none         := nth l i
+  | some 0       := some x
+  | some (j + 1) := nth r j
+  end
+def remove_nth : ordnode α → ℕ → ordnode α
+| nil i := nil
+| (node _ l x r) i :=
+  match nat.psub' i (size l) with
+  | none         := balance_r (remove_nth l i) x r
+  | some 0       := glue l r
+  | some (j + 1) := balance_l l x (remove_nth r j)
+  end
+def take_aux : ordnode α → ℕ → ordnode α
+| nil i := nil
+| (node _ l x r) i :=
+  if i = 0 then nil else
+  match nat.psub' i (size l) with
+  | none         := take_aux l i
+  | some 0       := l
+  | some (j + 1) := link l x (take_aux r j)
+  end
+def take (i : ℕ) (t : ordnode α) : ordnode α :=
+if size t ≤ i then t else take_aux t i
+def drop_aux : ordnode α → ℕ → ordnode α
+| nil i := nil
+| t@(node _ l x r) i :=
+  if i = 0 then t else
+  match nat.psub' i (size l) with
+  | none         := link (drop_aux l i) x r
+  | some 0       := insert_min x r
+  | some (j + 1) := drop_aux r j
+  end
+def drop (i : ℕ) (t : ordnode α) : ordnode α :=
+if size t ≤ i then nil else drop_aux t i
+def split_at_aux : ordnode α → ℕ → ordnode α × ordnode α
+| nil i := (nil, nil)
+| t@(node _ l x r) i :=
+  if i = 0 then (nil, t) else
+  match nat.psub' i (size l) with
+  | none         := let (l₁, l₂) := split_at_aux l i in (l₁, link l₂ x r)
+  | some 0       := (glue l r, insert_min x r)
+  | some (j + 1) := let (r₁, r₂) := split_at_aux r j in (link l x r₁, r₂)
+  end
+def split_at (i : ℕ) (t : ordnode α) : ordnode α × ordnode α :=
+if size t ≤ i then (t, nil) else split_at_aux t i
+def take_while (p : α → Prop) [decidable_pred p] : ordnode α → ordnode α
+| nil := nil
+| (node _ l x r) := if p x then link l x (take_while r) else take_while l
+def drop_while (p : α → Prop) [decidable_pred p] : ordnode α → ordnode α
+| nil := nil
+| (node _ l x r) := if p x then drop_while r else link (drop_while l) x r
+def span (p : α → Prop) [decidable_pred p] : ordnode α → ordnode α × ordnode α
+| nil := (nil, nil)
+| (node _ l x r) :=
+  if p x then let (r₁, r₂) := span r in (link l x r₁, r₂)
+  else        let (l₁, l₂) := span l in (l₁, link l₂ x r)
+def of_asc_list_aux₁ : ∀ l : list α, ℕ → ordnode α × {l' : list α // l'.length ≤ l.length}
+| [] := λ s, (nil, ⟨[], le_rfl⟩)
+| (x :: xs) := λ s,
+  if s = 1 then (ι x, ⟨xs, nat.le_succ _⟩) else
+  have _, from nat.lt_succ_self xs.length,
+  match of_asc_list_aux₁ xs (s.shiftl 1) with
+  | (t, ⟨[], h⟩) := (t, ⟨[], nat.zero_le _⟩)
+  | (l, ⟨y :: ys, h⟩) :=
+    have _, from nat.le_succ_of_le h,
+    let (r, ⟨zs, h'⟩) := of_asc_list_aux₁ ys (s.shiftl 1) in
+    (link l y r, ⟨zs, le_trans h' (le_of_lt this)⟩)
+  end
+using_well_founded
+{ rel_tac := λ _ _, `[exact ⟨_, measure_wf list.length⟩],
+  dec_tac := `[assumption] }
+def of_asc_list_aux₂ : list α → ordnode α → ℕ → ordnode α
+| [] := λ t s, t
+| (x :: xs) := λ l s,
+  have _, from nat.lt_succ_self xs.length,
+  match of_asc_list_aux₁ xs s with
+  | (r, ⟨ys, h⟩) :=
+    have _, from nat.lt_succ_of_le h,
+    of_asc_list_aux₂ ys (link l x r) (s.shiftl 1)
+  end
+using_well_founded
+{ rel_tac := λ _ _, `[exact ⟨_, measure_wf list.length⟩],
+  dec_tac := `[assumption] }
+def of_asc_list : list α → ordnode α
+| [] := nil
+| (x :: xs) := of_asc_list_aux₂ xs (ι x) 1
+section
+variables [has_le α] [@decidable_rel α (≤)]
+def mem (x : α) : ordnode α → bool
+| nil := ff
+| (node _ l y r) :=
+  match cmp_le x y with
+  | ordering.lt := mem l
+  | ordering.eq := tt
+  | ordering.gt := mem r
+  end
+def find (x : α) : ordnode α → option α
+| nil := none
+| (node _ l y r) :=
+  match cmp_le x y with
+  | ordering.lt := find l
+  | ordering.eq := some y
+  | ordering.gt := find r
+  end
+instance : has_mem α (ordnode α) := ⟨λ x t, t.mem x⟩
+instance mem.decidable (x : α) (t : ordnode α) : decidable (x ∈ t) :=
+bool.decidable_eq _ _
+def insert_with (f : α → α) (x : α) : ordnode α → ordnode α
+| nil := ι x
+| t@(node sz l y r) :=
+  match cmp_le x y with
+  | ordering.lt := balance_l (insert_with l) y r
+  | ordering.eq := node sz l (f y) r
+  | ordering.gt := balance_r l y (insert_with r)
+  end
+def adjust_with (f : α → α) (x : α) : ordnode α → ordnode α
+| nil := nil
+| t@(node sz l y r) :=
+  match cmp_le x y with
+  | ordering.lt := node sz (adjust_with l) y r
+  | ordering.eq := node sz l (f y) r
+  | ordering.gt := node sz l y (adjust_with r)
+  end
+def update_with (f : α → option α) (x : α) : ordnode α → ordnode α
+| nil := nil
+| t@(node sz l y r) :=
+  match cmp_le x y with
+  | ordering.lt := balance_r (update_with l) y r
+  | ordering.eq :=
+    match f y with
+    | none := glue l r
+    | some a := node sz l a r
+    end
+  | ordering.gt := balance_l l y (update_with r)
+  end
+def alter (f : option α → option α) (x : α) : ordnode α → ordnode α
+| nil := option.rec_on (f none) nil ordnode.singleton
+| t@(node sz l y r) :=
+  match cmp_le x y with
+  | ordering.lt := balance (alter l) y r
+  | ordering.eq :=
+    match f (some y) with
+    | none := glue l r
+    | some a := node sz l a r
+    end
+  | ordering.gt := balance l y (alter r)
+  end
+protected def insert (x : α) : ordnode α → ordnode α
+| nil := ι x
+| (node sz l y r) :=
+  match cmp_le x y with
+  | ordering.lt := balance_l (insert l) y r
+  | ordering.eq := node sz l x r
+  | ordering.gt := balance_r l y (insert r)
+  end
+instance : has_insert α (ordnode α) := ⟨ordnode.insert⟩
+def insert' (x : α) : ordnode α → ordnode α
+| nil := ι x
+| t@(node sz l y r) :=
+  match cmp_le x y with
+  | ordering.lt := balance_l (insert' l) y r
+  | ordering.eq := t
+  | ordering.gt := balance_r l y (insert' r)
+  end
+def split (x : α) : ordnode α → ordnode α × ordnode α
+| nil := (nil, nil)
+| (node sz l y r) :=
+  match cmp_le x y with
+  | ordering.lt := let (lt, gt) := split l in (lt, link gt y r)
+  | ordering.eq := (l, r)
+  | ordering.gt := let (lt, gt) := split r in (link l y lt, gt)
+  end
+def split3 (x : α) : ordnode α → ordnode α × option α × ordnode α
+| nil := (nil, none, nil)
+| (node sz l y r) :=
+  match cmp_le x y with
+  | ordering.lt := let (lt, f, gt) := split3 l in (lt, f, link gt y r)
+  | ordering.eq := (l, some y, r)
+  | ordering.gt := let (lt, f, gt) := split3 r in (link l y lt, f, gt)
+  end
+def erase (x : α) : ordnode α → ordnode α
+| nil := nil
+| t@(node sz l y r) :=
+  match cmp_le x y with
+  | ordering.lt := balance_r (erase l) y r
+  | ordering.eq := glue l r
+  | ordering.gt := balance_l l y (erase r)
+  end
+def find_lt_aux (x : α) : ordnode α → α → α
+| nil best := best
+| (node _ l y r) best :=
+  if x ≤ y then find_lt_aux l best else find_lt_aux r y
+def find_lt (x : α) : ordnode α → option α
+| nil := none
+| (node _ l y r) :=
+  if x ≤ y then find_lt l else some (find_lt_aux x r y)
+def find_gt_aux (x : α) : ordnode α → α → α
+| nil best := best
+| (node _ l y r) best :=
+  if y ≤ x then find_gt_aux r best else find_gt_aux l y
+def find_gt (x : α) : ordnode α → option α
+| nil := none
+| (node _ l y r) :=
+  if y ≤ x then find_gt r else some (find_gt_aux x l y)
+def find_le_aux (x : α) : ordnode α → α → α
+| nil best := best
+| (node _ l y r) best :=
+  match cmp_le x y with
+  | ordering.lt := find_le_aux l best
+  | ordering.eq := y
+  | ordering.gt := find_le_aux r y
+  end
+def find_le (x : α) : ordnode α → option α
+| nil := none
+| (node _ l y r) :=
+  match cmp_le x y with
+  | ordering.lt := find_le l
+  | ordering.eq := some y
+  | ordering.gt := some (find_le_aux x r y)
+  end
+def find_ge_aux (x : α) : ordnode α → α → α
+| nil best := best
+| (node _ l y r) best :=
+  match cmp_le x y with
+  | ordering.lt := find_ge_aux l y
+  | ordering.eq := y
+  | ordering.gt := find_ge_aux r best
+  end
+def find_ge (x : α) : ordnode α → option α
+| nil := none
+| (node _ l y r) :=
+  match cmp_le x y with
+  | ordering.lt := some (find_ge_aux x l y)
+  | ordering.eq := some y
+  | ordering.gt := find_ge r
+  end
+def find_index_aux (x : α) : ordnode α → ℕ → option ℕ
+| nil i := none
+| (node _ l y r) i :=
+  match cmp_le x y with
+  | ordering.lt := find_index_aux l i
+  | ordering.eq := some (i + size l)
+  | ordering.gt := find_index_aux r (i + size l + 1)
+  end
+def find_index (x : α) (t : ordnode α) : option ℕ := find_index_aux x t 0
+def is_subset_aux : ordnode α → ordnode α → bool
+| nil _ := tt
+| _ nil := ff
+| (node _ l x r) t :=
+  let (lt, found, gt) := split3 x t in
+  found.is_some && is_subset_aux l lt && is_subset_aux r gt
+def is_subset (t₁ t₂ : ordnode α) : bool :=
+to_bool (size t₁ ≤ size t₂) && is_subset_aux t₁ t₂
+def disjoint : ordnode α → ordnode α → bool
+| nil _ := tt
+| _ nil := tt
+| (node _ l x r) t :=
+  let (lt, found, gt) := split3 x t in
+  found.is_none && disjoint l lt && disjoint r gt
+def union : ordnode α → ordnode α → ordnode α
+| t₁ nil := t₁
+| nil t₂ := t₂
+| t₁@(node s₁ l₁ x₁ r₁) t₂@(node s₂ l₂ x₂ r₂) :=
+  if s₂ = 1 then insert' x₂ t₁ else
+  if s₁ = 1 then insert x₁ t₂ else
+  let (l₂', r₂') := split x₁ t₂ in
+  link (union l₁ l₂') x₁ (union r₁ r₂')
+def diff : ordnode α → ordnode α → ordnode α
+| t₁ nil := t₁
+| t₁ t₂@(node _ l₂ x r₂) := cond t₁.empty t₂ $
+  let (l₁, r₁) := split x t₁,
+      l₁₂ := diff l₁ l₂, r₁₂ := diff r₁ r₂ in
+  if size l₁₂ + size r₁₂ = size t₁ then t₁ else
+  merge l₁₂ r₁₂
+def inter : ordnode α → ordnode α → ordnode α
+| nil t₂ := nil
+| t₁@(node _ l₁ x r₁) t₂ := cond t₂.empty t₁ $
+  let (l₂, y, r₂) := split3 x t₂,
+      l₁₂ := inter l₁ l₂, r₁₂ := inter r₁ r₂ in
+  cond y.is_some (link l₁₂ x r₁₂) (merge l₁₂ r₁₂)
+def of_list (l : list α) : ordnode α := l.foldr insert nil
+def of_list' : list α → ordnode α
+| [] := nil
+| (x :: xs) :=
+  if list.chain (λ a b, ¬ b ≤ a) x xs
+  then of_asc_list (x :: xs)
+  else of_list (x :: xs)
+def image {α β} [has_le β] [@decidable_rel β (≤)]
+  (f : α → β) (t : ordnode α) : ordnode β :=
+of_list (t.to_list.map f)
+end
+end ordnode

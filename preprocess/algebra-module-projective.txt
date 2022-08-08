@@ -1,0 +1,23 @@
+import algebra.module.basic
+import linear_algebra.finsupp
+import linear_algebra.free_module.basic
+universes u v
+class module.projective (R : Type u) [semiring R] (P : Type (max u v)) [add_comm_monoid P]
+  [module R P] : Prop :=
+(out : ∃ s : P →ₗ[R] (P →₀ R), function.left_inverse (finsupp.total P P R id) s)
+namespace module
+lemma projective_def {R : Type u} [semiring R] {P : Type (max u v)} [add_comm_monoid P]
+  [module R P] : projective R P ↔
+  (∃ s : P →ₗ[R] (P →₀ R), function.left_inverse (finsupp.total P P R id) s) :=
+⟨λ h, h.1, λ h, ⟨h⟩⟩
+section semiring
+variables {R : Type u} [semiring R] {P : Type (max u v)} [add_comm_monoid P] [module R P]
+  {M : Type (max u v)} [add_comm_group M] [module R M] {N : Type*} [add_comm_group N] [module R N]
+theorem projective_lifting_property [h : projective R P] (f : M →ₗ[R] N) (g : P →ₗ[R] N)
+  (hf : function.surjective f) : ∃ (h : P →ₗ[R] M), f.comp h = g :=
+begin
+  let φ : (P →₀ R) →ₗ[R] M := finsupp.total _ _ _ (λ p, function.surj_inv hf (g p)),
+theorem projective_of_lifting_property'
+theorem projective_of_lifting_property
+theorem projective_of_basis {ι : Type*} (b : basis ι R P) : projective R P :=
+begin

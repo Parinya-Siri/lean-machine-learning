@@ -1,0 +1,13 @@
+import tactic.pi_instances
+universes u v
+namespace category_theory
+variables {c d : Type u → Type v} {α : Type u}
+@[nolint has_inhabited_instance]
+structure bundled (c : Type u → Type v) : Type (max (u+1) v) :=
+(α : Type u)
+(str : c α . tactic.apply_instance)
+namespace bundled
+@[reducible] def map (f : Π {α}, c α → d α) (b : bundled c) : bundled d :=
+⟨b, f b.str⟩
+end bundled
+end category_theory

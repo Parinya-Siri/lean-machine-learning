@@ -1,0 +1,45 @@
+import category_theory.adjunction.basic
+import category_theory.adjunction.comma
+import category_theory.limits.constructions.weakly_initial
+import category_theory.limits.preserves.basic
+import category_theory.limits.creates
+import category_theory.limits.comma
+import category_theory.punit
+universes v u
+namespace category_theory
+open limits
+variables {J : Type v}
+variables {C : Type u} [category.{v} C]
+def solution_set_condition {D : Type u} [category.{v} D] (G : D ⥤ C) : Prop :=
+∀ (A : C), ∃ (ι : Type v) (B : ι → D) (f : Π (i : ι), A ⟶ G.obj (B i)),
+  ∀ X (h : A ⟶ G.obj X), ∃ (i : ι) (g : B i ⟶ X), f i ≫ G.map g = h
+variables {D : Type u} [category.{v} D]
+section general_adjoint_functor_theorem
+variables (G : D ⥤ C)
+lemma solution_set_condition_of_is_right_adjoint [is_right_adjoint G] :
+  solution_set_condition G :=
+begin
+  intros A,
+  refine ⟨punit, λ _, (left_adjoint G).obj A, λ _, (adjunction.of_right_adjoint G).unit.app A, _⟩,
+  intros B h,
+  refine ⟨punit.star, ((adjunction.of_right_adjoint G).hom_equiv _ _).symm h, _⟩,
+  rw [←adjunction.hom_equiv_unit, equiv.apply_symm_apply],
+end
+noncomputable def is_right_adjoint_of_preserves_limits_of_solution_set_condition
+  [has_limits D] [preserves_limits G] (hG : solution_set_condition G) :
+  is_right_adjoint G :=
+begin
+  apply is_right_adjoint_of_structured_arrow_initials _,
+  intro A,
+  specialize hG A,
+  choose ι B f g using hG,
+  let B' : ι → structured_arrow A G := λ i, structured_arrow.mk (f i),
+  have hB' : ∀ (A' : structured_arrow A G), ∃ i, nonempty (B' i ⟶ A'),
+  { intros A',
+    obtain ⟨i, _, t⟩ := g _ A'.hom,
+    exact ⟨i, ⟨structured_arrow.hom_mk _ t⟩⟩ },
+  obtain ⟨T, hT⟩ := has_weakly_initial_of_weakly_initial_set_and_has_products hB',
+  apply has_initial_of_weakly_initial_and_has_wide_equalizers hT,
+end
+end general_adjoint_functor_theorem
+end category_theory

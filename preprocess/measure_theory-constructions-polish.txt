@@ -1,0 +1,273 @@
+import topology.metric_space.polish
+import measure_theory.constructions.borel_space
+open set function polish_space pi_nat topological_space metric filter
+open_locale topological_space measure_theory
+variables {α : Type*} [topological_space α] {ι : Type*}
+namespace measure_theory
+@[irreducible] def analytic_set (s : set α) : Prop :=
+s = ∅ ∨ ∃ (f : (ℕ → ℕ) → α), continuous f ∧ range f = s
+lemma analytic_set_empty : analytic_set (∅ : set α) :=
+begin
+  rw analytic_set,
+  exact or.inl rfl
+end
+lemma analytic_set_range_of_polish_space
+  {β : Type*} [topological_space β] [polish_space β] {f : β → α} (f_cont : continuous f) :
+  analytic_set (range f) :=
+begin
+  casesI is_empty_or_nonempty β,
+  { rw range_eq_empty,
+    exact analytic_set_empty },
+  { rw analytic_set,
+    obtain ⟨g, g_cont, hg⟩ : ∃ (g : (ℕ → ℕ) → β), continuous g ∧ surjective g :=
+      exists_nat_nat_continuous_surjective β,
+    refine or.inr ⟨f ∘ g, f_cont.comp g_cont, _⟩,
+    rwa hg.range_comp }
+end
+lemma _root_.is_open.analytic_set_image {β : Type*} [topological_space β] [polish_space β]
+  {s : set β} (hs : is_open s) {f : β → α} (f_cont : continuous f) :
+  analytic_set (f '' s) :=
+begin
+  rw image_eq_range,
+  haveI : polish_space s := hs.polish_space,
+  exact analytic_set_range_of_polish_space (f_cont.comp continuous_subtype_coe),
+end
+theorem analytic_set_iff_exists_polish_space_range {s : set α} :
+  analytic_set s ↔ ∃ (β : Type) (h : topological_space β) (h' : @polish_space β h) (f : β → α),
+    @continuous _ _ h _ f ∧ range f = s :=
+begin
+  split,
+  { assume h,
+    rw analytic_set at h,
+    cases h,
+    { refine ⟨empty, by apply_instance, by apply_instance, empty.elim, continuous_bot, _⟩,
+      rw h,
+      exact range_eq_empty _ },
+    { exact ⟨ℕ → ℕ, by apply_instance, by apply_instance, h⟩ } },
+  { rintros ⟨β, h, h', f, f_cont, f_range⟩,
+    resetI,
+    rw ← f_range,
+    exact analytic_set_range_of_polish_space f_cont }
+end
+lemma analytic_set.image_of_continuous_on {β : Type*} [topological_space β]
+  {s : set α} (hs : analytic_set s) {f : α → β} (hf : continuous_on f s) :
+  analytic_set (f '' s) :=
+begin
+  rcases analytic_set_iff_exists_polish_space_range.1 hs with ⟨γ, γtop, γpolish, g, g_cont, gs⟩,
+  resetI,
+  have : f '' s = range (f ∘ g), by rw [range_comp, gs],
+  rw this,
+  apply analytic_set_range_of_polish_space,
+  apply hf.comp_continuous g_cont (λ x, _),
+  rw ← gs,
+  exact mem_range_self _
+end
+lemma analytic_set.image_of_continuous {β : Type*} [topological_space β]
+  {s : set α} (hs : analytic_set s) {f : α → β} (hf : continuous f) :
+  analytic_set (f '' s) :=
+hs.image_of_continuous_on hf.continuous_on
+theorem analytic_set.Inter [hι : nonempty ι] [encodable ι] [t2_space α]
+  {s : ι → set α} (hs : ∀ n, analytic_set (s n)) :
+  analytic_set (⋂ n, s n) :=
+begin
+  unfreezingI { rcases hι with ⟨i₀⟩ },
+  choose β hβ h'β f f_cont f_range using λ n, analytic_set_iff_exists_polish_space_range.1 (hs n),
+  resetI,
+  let γ := Π n, β n,
+  let t : set γ := ⋂ n, {x | f n (x n) = f i₀ (x i₀)},
+  have t_closed : is_closed t,
+  { apply is_closed_Inter,
+    assume n,
+    exact is_closed_eq ((f_cont n).comp (continuous_apply n))
+      ((f_cont i₀).comp (continuous_apply i₀)) },
+  haveI : polish_space t := t_closed.polish_space,
+  let F : t → α := λ x, f i₀ ((x : γ) i₀),
+  have F_cont : continuous F :=
+    (f_cont i₀).comp ((continuous_apply i₀).comp continuous_subtype_coe),
+  have F_range : range F = ⋂ (n : ι), s n,
+  { apply subset.antisymm,
+    { rintros y ⟨x, rfl⟩,
+      apply mem_Inter.2 (λ n, _),
+      have : f n ((x : γ) n) = F x := (mem_Inter.1 x.2 n : _),
+      rw [← this, ← f_range n],
+      exact mem_range_self _ },
+    { assume y hy,
+      have A : ∀ n, ∃ (x : β n), f n x = y,
+      { assume n,
+        rw [← mem_range, f_range n],
+        exact mem_Inter.1 hy n },
+      choose x hx using A,
+      have xt : x ∈ t,
+      { apply mem_Inter.2 (λ n, _),
+        simp [hx] },
+        refine ⟨⟨x, xt⟩, _⟩,
+        exact hx i₀ } },
+  rw ← F_range,
+  exact analytic_set_range_of_polish_space F_cont,
+end
+theorem analytic_set.Union [encodable ι] {s : ι → set α} (hs : ∀ n, analytic_set (s n)) :
+  analytic_set (⋃ n, s n) :=
+begin
+  choose β hβ h'β f f_cont f_range using λ n, analytic_set_iff_exists_polish_space_range.1 (hs n),
+  resetI,
+  let γ := Σ n, β n,
+  let F : γ → α := by { rintros ⟨n, x⟩, exact f n x },
+  have F_cont : continuous F := continuous_sigma f_cont,
+  have F_range : range F = ⋃ n, s n,
+  { rw [range_sigma_eq_Union_range],
+    congr,
+    ext1 n,
+    rw ← f_range n },
+  rw ← F_range,
+  exact analytic_set_range_of_polish_space F_cont,
+end
+theorem _root_.is_closed.analytic_set [polish_space α] {s : set α} (hs : is_closed s) :
+  analytic_set s :=
+begin
+  haveI : polish_space s := hs.polish_space,
+  rw ← @subtype.range_val α s,
+  exact analytic_set_range_of_polish_space continuous_subtype_coe,
+end
+lemma _root_.measurable_set.is_clopenable [polish_space α] [measurable_space α] [borel_space α]
+  {s : set α} (hs : measurable_set s) :
+  is_clopenable s :=
+begin
+  revert s,
+  apply measurable_set.induction_on_open,
+  { exact λ u hu, hu.is_clopenable },
+  { exact λ u hu h'u, h'u.compl },
+  { exact λ f f_disj f_meas hf, is_clopenable.Union hf }
+end
+theorem _root_.measurable_set.analytic_set
+  {α : Type*} [t : topological_space α] [polish_space α] [measurable_space α] [borel_space α]
+  {s : set α} (hs : measurable_set s) :
+  analytic_set s :=
+begin
+  obtain ⟨t', t't, t'_polish, s_closed, s_open⟩ :
+    ∃ (t' : topological_space α), t' ≤ t ∧ @polish_space α t' ∧ @is_closed α t' s ∧
+      @is_open α t' s := hs.is_clopenable,
+  have A := @is_closed.analytic_set α t' t'_polish s s_closed,
+  convert @analytic_set.image_of_continuous α t' α t s A id (continuous_id_of_le t't),
+  simp only [id.def, image_id'],
+end
+lemma _root_.measurable.exists_continuous {α β : Type*}
+  [t : topological_space α] [polish_space α] [measurable_space α] [borel_space α]
+  [tβ : topological_space β] [second_countable_topology β] [measurable_space β] [borel_space β]
+  {f : α → β} (hf : measurable f) :
+  ∃ (t' : topological_space α), t' ≤ t ∧ @continuous α β t' tβ f ∧ @polish_space α t' :=
+begin
+  obtain ⟨b, b_count, -, hb⟩ : ∃b : set (set β), b.countable ∧ ∅ ∉ b ∧ is_topological_basis b :=
+    exists_countable_basis β,
+  haveI : encodable b := b_count.to_encodable,
+  have : ∀ (s : b), is_clopenable (f ⁻¹' s),
+  { assume s,
+    apply measurable_set.is_clopenable,
+    exact hf (hb.is_open s.2).measurable_set },
+  choose T Tt Tpolish Tclosed Topen using this,
+  obtain ⟨t', t'T, t't, t'_polish⟩ :
+    ∃ (t' : topological_space α), (∀ i, t' ≤ T i) ∧ (t' ≤ t) ∧ @polish_space α t' :=
+      exists_polish_space_forall_le T Tt Tpolish,
+  refine ⟨t', t't, _, t'_polish⟩,
+  apply hb.continuous _ (λ s hs, _),
+  exact t'T ⟨s, hs⟩ _ (Topen ⟨s, hs⟩),
+end
+def measurably_separable {α : Type*} [measurable_space α] (s t : set α) : Prop :=
+∃ u, s ⊆ u ∧ disjoint t u ∧ measurable_set u
+lemma measurably_separable.Union [encodable ι]
+  {α : Type*} [measurable_space α] {s t : ι → set α}
+  (h : ∀ m n, measurably_separable (s m) (t n)) :
+  measurably_separable (⋃ n, s n) (⋃ m, t m) :=
+begin
+  choose u hsu htu hu using h,
+  refine ⟨⋃ m, (⋂ n, u m n), _, _, _⟩,
+  { refine Union_subset (λ m, subset_Union_of_subset m _),
+    exact subset_Inter (λ n, hsu m n) },
+  { simp_rw [disjoint_Union_left, disjoint_Union_right],
+    assume n m,
+    apply disjoint.mono_right _ (htu m n),
+    apply Inter_subset },
+  { refine measurable_set.Union (λ m, _),
+    exact measurable_set.Inter (λ n, hu m n) }
+end
+lemma measurably_separable_range_of_disjoint [t2_space α] [measurable_space α] [borel_space α]
+  {f g : (ℕ → ℕ) → α} (hf : continuous f) (hg : continuous g) (h : disjoint (range f) (range g)) :
+  measurably_separable (range f) (range g) :=
+begin
+  by_contra hfg,
+  have I : ∀ n x y, (¬(measurably_separable (f '' (cylinder x n)) (g '' (cylinder y n))))
+    → ∃ x' y', x' ∈ cylinder x n ∧ y' ∈ cylinder y n ∧
+                ¬(measurably_separable (f '' (cylinder x' (n+1))) (g '' (cylinder y' (n+1)))),
+  { assume n x y,
+    contrapose!,
+    assume H,
+    rw [← Union_cylinder_update x n, ← Union_cylinder_update y n, image_Union, image_Union],
+    refine measurably_separable.Union (λ i j, _),
+    exact H _ _ (update_mem_cylinder _ _ _) (update_mem_cylinder _ _ _) },
+theorem analytic_set.measurably_separable [t2_space α] [measurable_space α] [borel_space α]
+  {s t : set α} (hs : analytic_set s) (ht : analytic_set t) (h : disjoint s t) :
+  measurably_separable s t :=
+begin
+  rw analytic_set at hs ht,
+  rcases hs with rfl|⟨f, f_cont, rfl⟩,
+  { refine ⟨∅, subset.refl _, by simp, measurable_set.empty⟩ },
+  rcases ht with rfl|⟨g, g_cont, rfl⟩,
+  { exact ⟨univ, subset_univ _, by simp, measurable_set.univ⟩ },
+  exact measurably_separable_range_of_disjoint f_cont g_cont h,
+end
+variables {γ : Type*} [tγ : topological_space γ] [polish_space γ]
+include tγ
+theorem measurable_set_range_of_continuous_injective {β : Type*}
+  [topological_space β] [t2_space β] [measurable_space β] [borel_space β]
+  {f : γ → β} (f_cont : continuous f) (f_inj : injective f) :
+  measurable_set (range f) :=
+begin
+  letI := upgrade_polish_space γ,
+  obtain ⟨b, b_count, b_nonempty, hb⟩ :
+    ∃ b : set (set γ), b.countable ∧ ∅ ∉ b ∧ is_topological_basis b := exists_countable_basis γ,
+  haveI : encodable b := b_count.to_encodable,
+  let A := {p : b × b // disjoint (p.1 : set γ) p.2},
+theorem _root_.measurable_set.image_of_continuous_on_inj_on
+  (hs : measurable_set s) (f_cont : continuous_on f s) (f_inj : inj_on f s) :
+  measurable_set (f '' s) :=
+begin
+  obtain ⟨t', t't, t'_polish, s_closed, s_open⟩ :
+    ∃ (t' : topological_space γ), t' ≤ tγ ∧ @polish_space γ t' ∧ @is_closed γ t' s ∧
+      @is_open γ t' s := hs.is_clopenable,
+  exact @is_closed.measurable_set_image_of_continuous_on_inj_on γ t' t'_polish β _ _ _ _ s
+    s_closed f (f_cont.mono_dom t't) f_inj,
+end
+theorem _root_.measurable_set.image_of_measurable_inj_on [second_countable_topology β]
+  (hs : measurable_set s) (f_meas : measurable f) (f_inj : inj_on f s) :
+  measurable_set (f '' s) :=
+begin
+theorem _root_.continuous.measurable_embedding (f_cont : continuous f) (f_inj : injective f) :
+  measurable_embedding f :=
+{ injective := f_inj,
+  measurable := f_cont.measurable,
+  measurable_set_image' := λ u hu,
+    hu.image_of_continuous_on_inj_on f_cont.continuous_on (f_inj.inj_on _) }
+theorem _root_.continuous_on.measurable_embedding (hs : measurable_set s)
+  (f_cont : continuous_on f s) (f_inj : inj_on f s) :
+  measurable_embedding (s.restrict f) :=
+{ injective := inj_on_iff_injective.1 f_inj,
+  measurable := (continuous_on_iff_continuous_restrict.1 f_cont).measurable,
+  measurable_set_image' :=
+  begin
+    assume u hu,
+    have A : measurable_set ((coe : s → γ) '' u) :=
+      (measurable_embedding.subtype_coe hs).measurable_set_image.2 hu,
+    have B : measurable_set (f '' ((coe : s → γ) '' u)) :=
+      A.image_of_continuous_on_inj_on (f_cont.mono (subtype.coe_image_subset s u))
+        (f_inj.mono ((subtype.coe_image_subset s u))),
+    rwa ← image_comp at B,
+  end }
+theorem _root_.measurable.measurable_embedding [second_countable_topology β]
+  (f_meas : measurable f) (f_inj : injective f) :
+  measurable_embedding f :=
+{ injective := f_inj,
+  measurable := f_meas,
+  measurable_set_image' := λ u hu, hu.image_of_measurable_inj_on f_meas (f_inj.inj_on _) }
+omit tβ
+lemma is_clopenable_iff_measurable_set :
+  is_clopenable s ↔ measurable_set s :=
+begin

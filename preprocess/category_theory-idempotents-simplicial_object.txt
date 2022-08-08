@@ -1,0 +1,11 @@
+import algebraic_topology.simplicial_object
+import category_theory.idempotents.functor_categories
+namespace category_theory
+namespace idempotents
+variables {C : Type*} [category C] [is_idempotent_complete C]
+instance : is_idempotent_complete (simplicial_object C) :=
+idempotents.functor_category_is_idempotent_complete _ _
+instance : is_idempotent_complete (cosimplicial_object C) :=
+idempotents.functor_category_is_idempotent_complete _ _
+end idempotents
+end category_theory

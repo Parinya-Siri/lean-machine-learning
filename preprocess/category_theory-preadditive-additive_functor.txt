@@ -1,0 +1,64 @@
+import category_theory.limits.preserves.shapes.biproducts
+import category_theory.preadditive.functor_category
+namespace category_theory
+class functor.additive {C D : Type*} [category C] [category D]
+  [preadditive C] [preadditive D] (F : C ⥤ D) : Prop :=
+(map_add' : Π {X Y : C} {f g : X ⟶ Y}, F.map (f + g) = F.map f + F.map g . obviously)
+section preadditive
+namespace functor
+section
+variables {C D : Type*} [category C] [category D] [preadditive C]
+  [preadditive D] (F : C ⥤ D) [functor.additive F]
+@[simp]
+lemma map_add {X Y : C} {f g : X ⟶ Y} : F.map (f + g) = F.map f + F.map g :=
+functor.additive.map_add'
+@[simps {fully_applied := ff}]
+def map_add_hom {X Y : C} : (X ⟶ Y) →+ (F.obj X ⟶ F.obj Y) :=
+add_monoid_hom.mk' (λ f, F.map f) (λ f g, F.map_add)
+lemma coe_map_add_hom {X Y : C} : ⇑(F.map_add_hom : (X ⟶ Y) →+ _) = @map C _ D _ F X Y := rfl
+@[priority 100]
+instance preserves_zero_morphisms_of_additive : preserves_zero_morphisms F :=
+{ map_zero' := λ X Y, F.map_add_hom.map_zero }
+instance : additive (𝟭 C) :=
+{}
+instance {E : Type*} [category E] [preadditive E] (G : D ⥤ E) [functor.additive G] :
+  additive (F ⋙ G) :=
+{}
+@[simp]
+lemma map_neg {X Y : C} {f : X ⟶ Y} : F.map (-f) = - F.map f :=
+(F.map_add_hom : (X ⟶ Y) →+ (F.obj X ⟶ F.obj Y)).map_neg _
+@[simp]
+lemma map_sub {X Y : C} {f g : X ⟶ Y} : F.map (f - g) = F.map f - F.map g :=
+(F.map_add_hom : (X ⟶ Y) →+ (F.obj X ⟶ F.obj Y)).map_sub _ _
+@[derive category, nolint has_inhabited_instance]
+def AdditiveFunctor :=
+{ F : C ⥤ D // functor.additive F }
+infixr ` ⥤+ `:26 := AdditiveFunctor
+instance : preadditive (C ⥤+ D) :=
+preadditive.induced_category.category _
+@[derive full, derive faithful]
+def AdditiveFunctor.forget : (C ⥤+ D) ⥤ (C ⥤ D) :=
+full_subcategory_inclusion _
+variables {C D}
+def AdditiveFunctor.of (F : C ⥤ D) [F.additive] : C ⥤+ D :=
+⟨F, infer_instance⟩
+@[simp]
+lemma AdditiveFunctor.of_fst (F : C ⥤ D) [F.additive] : (AdditiveFunctor.of F).1 = F :=
+rfl
+@[simp]
+lemma AdditiveFunctor.forget_obj (F : C ⥤+ D) : (AdditiveFunctor.forget C D).obj F = F.1 :=
+rfl
+lemma AdditiveFunctor.forget_obj_of (F : C ⥤ D) [F.additive] :
+  (AdditiveFunctor.forget C D).obj (AdditiveFunctor.of F) = F :=
+rfl
+@[simp]
+lemma AdditiveFunctor.forget_map (F G : C ⥤+ D) (α : F ⟶ G) :
+  (AdditiveFunctor.forget C D).map α = α :=
+rfl
+instance : functor.additive (AdditiveFunctor.forget C D) :=
+{ map_add' := λ F G α β, rfl }
+instance (F : C ⥤+ D) : functor.additive F.1 :=
+F.2
+end
+end preadditive
+end category_theory

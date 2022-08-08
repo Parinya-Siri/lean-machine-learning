@@ -1,0 +1,30 @@
+import data.opposite
+open opposite
+class quiver (V : Type u) :=
+(hom : V → V → Sort v)
+structure prefunctor (V : Type u₁) [quiver.{v₁} V] (W : Type u₂) [quiver.{v₂} W] :=
+(obj [] : V → W)
+(map : Π {X Y : V}, (X ⟶ Y) → (obj X ⟶ obj Y))
+namespace prefunctor
+@[simps]
+def id (V : Type*) [quiver V] : prefunctor V V :=
+{ obj := id,
+  map := λ X Y f, f, }
+instance (V : Type*) [quiver V] : inhabited (prefunctor V V) := ⟨id V⟩
+@[simps]
+def comp {U : Type*} [quiver U] {V : Type*} [quiver V] {W : Type*} [quiver W]
+  (F : prefunctor U V) (G : prefunctor V W) : prefunctor U W :=
+{ obj := λ X, G.obj (F.obj X),
+  map := λ X Y f, G.map (F.map f), }
+end prefunctor
+namespace quiver
+instance opposite {V} [quiver V] : quiver Vᵒᵖ :=
+⟨λ a b, (unop b) ⟶ (unop a)⟩
+def hom.op {V} [quiver V] {X Y : V} (f : X ⟶ Y) : op Y ⟶ op X := f
+def hom.unop {V} [quiver V] {X Y : Vᵒᵖ} (f : X ⟶ Y) : unop Y ⟶ unop X := f
+attribute [irreducible] quiver.opposite
+@[nolint has_inhabited_instance]
+def empty (V) : Type u := V
+instance empty_quiver (V : Type u) : quiver.{u} (empty V) := ⟨λ a b, pempty⟩
+@[simp] lemma empty_arrow {V : Type u} (a b : empty V) : (a ⟶ b) = pempty := rfl
+end quiver

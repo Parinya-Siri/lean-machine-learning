@@ -1,0 +1,72 @@
+namespace option
+variables {α : Type*} {β : Type*}
+attribute [inline] option.is_some option.is_none
+@[simp] protected def elim (b : β) (f : α → β) : option α → β
+| (some a) := f a
+| none     := b
+instance has_mem : has_mem α (option α) := ⟨λ a b, b = some a⟩
+@[simp] theorem mem_def {a : α} {b : option α} : a ∈ b ↔ b = some a :=
+iff.rfl
+lemma mem_iff {a : α} {b : option α} : a ∈ b ↔ b = a := iff.rfl
+theorem is_none_iff_eq_none {o : option α} : o.is_none = tt ↔ o = none :=
+⟨option.eq_none_of_is_none, λ e, e.symm ▸ rfl⟩
+theorem some_inj {a b : α} : some a = some b ↔ a = b := by simp
+lemma mem_some_iff {α : Type*} {a b : α} : a ∈ some b ↔ b = a :=
+by simp
+@[inline]
+def decidable_eq_none {o : option α} : decidable (o = none) :=
+decidable_of_decidable_of_iff (bool.decidable_eq _ _) is_none_iff_eq_none
+instance decidable_forall_mem {p : α → Prop} [decidable_pred p] :
+  ∀ o : option α, decidable (∀ a ∈ o, p a)
+| none     := is_true (by simp [false_implies_iff])
+| (some a) := if h : p a
+  then is_true $ λ o e, some_inj.1 e ▸ h
+  else is_false $ mt (λ H, H _ rfl) h
+instance decidable_exists_mem {p : α → Prop} [decidable_pred p] :
+  ∀ o : option α, decidable (∃ a ∈ o, p a)
+| none     := is_false (λ ⟨a, ⟨h, _⟩⟩, by cases h)
+| (some a) := if h : p a
+  then is_true $ ⟨_, rfl, h⟩
+  else is_false $ λ ⟨_, ⟨rfl, hn⟩⟩, h hn
+@[reducible] def iget [inhabited α] : option α → α
+| (some x) := x
+| none     := default
+@[simp] theorem iget_some [inhabited α] {a : α} : (some a).iget = a := rfl
+def guard (p : α → Prop) [decidable_pred p] (a : α) : option α :=
+if p a then some a else none
+def filter (p : α → Prop) [decidable_pred p] (o : option α) : option α :=
+o.bind (guard p)
+def to_list : option α → list α
+| none     := []
+| (some a) := [a]
+@[simp] theorem mem_to_list {a : α} {o : option α} : a ∈ to_list o ↔ a ∈ o :=
+by cases o; simp [to_list, eq_comm]
+def lift_or_get (f : α → α → α) : option α → option α → option α
+| none     none     := none
+inductive rel (r : α → β → Prop) : option α → option β → Prop
+| some {a b} : r a b → rel (some a) (some b)
+| none       : rel none none
+@[simp] def pbind : Π (x : option α), (Π (a : α), a ∈ x → option β) → option β
+| none     _ := none
+| (some a) f := f a rfl
+@[simp] def pmap {p : α → Prop} (f : Π (a : α), p a → β) :
+  Π x : option α, (∀ a ∈ x, p a) → option β
+| none     _ := none
+| (some a) H := some (f a (H a (mem_def.mpr rfl)))
+@[simp] def join : option (option α) → option α :=
+λ x, bind x id
+protected def {u v} traverse {F : Type u → Type v} [applicative F] {α β : Type*} (f : α → F β) :
+  option α → F (option β)
+| none     := pure none
+| (some x) := some <$> f x
+def {u v} maybe {m : Type u → Type v} [monad m] {α : Type u} : option (m α) → m (option α)
+| none      := return none
+| (some fn) := some <$> fn
+def {u v w} mmap {m : Type u → Type v} [monad m] {α : Type w} {β : Type u} (f : α → m β)
+  (o : option α) : m (option β) := (o.map f).maybe
+def melim {α β : Type*} {m : Type* → Type*} [monad m] (y : m β) (z : α → m β) (x : m (option α)) :
+  m β :=
+x >>= option.elim y z
+def mget_or_else {α : Type*} {m : Type* → Type*} [monad m] (x : m (option α)) (y : m α) : m α :=
+melim y pure x
+end option

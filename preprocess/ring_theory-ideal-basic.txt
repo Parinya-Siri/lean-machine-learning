@@ -1,0 +1,310 @@
+import algebra.associated
+import linear_algebra.basic
+import order.zorn
+import order.atoms
+import order.compactly_generated
+import tactic.abel
+import data.nat.choose.sum
+import linear_algebra.finsupp
+universes u v w
+variables {α : Type u} {β : Type v}
+open set function
+open_locale classical big_operators pointwise
+@[reducible] def ideal (R : Type u) [semiring R] := submodule R R
+section semiring
+namespace ideal
+variables [semiring α] (I : ideal α) {a b : α}
+protected lemma zero_mem : (0 : α) ∈ I := I.zero_mem
+protected lemma add_mem : a ∈ I → b ∈ I → a + b ∈ I := I.add_mem
+variables (a)
+lemma mul_mem_left : b ∈ I → a * b ∈ I := I.smul_mem a
+variables {a}
+@[ext] lemma ext {I J : ideal α} (h : ∀ x, x ∈ I ↔ x ∈ J) : I = J :=
+submodule.ext h
+lemma sum_mem (I : ideal α) {ι : Type*} {t : finset ι} {f : ι → α} :
+  (∀c∈t, f c ∈ I) → (∑ i in t, f i) ∈ I := submodule.sum_mem I
+theorem eq_top_of_unit_mem
+  (x y : α) (hx : x ∈ I) (h : y * x = 1) : I = ⊤ :=
+eq_top_iff.2 $ λ z _, calc
+    z = z * (y * x) : by simp [h]
+  ... = (z * y) * x : eq.symm $ mul_assoc z y x
+  ... ∈ I : I.mul_mem_left _ hx
+theorem eq_top_of_is_unit_mem {x} (hx : x ∈ I) (h : is_unit x) : I = ⊤ :=
+let ⟨y, hy⟩ := h.exists_left_inv in eq_top_of_unit_mem I x y hx hy
+theorem eq_top_iff_one : I = ⊤ ↔ (1:α) ∈ I :=
+⟨by rintro rfl; trivial,
+ λ h, eq_top_of_unit_mem _ _ 1 h (by simp)⟩
+theorem ne_top_iff_one : I ≠ ⊤ ↔ (1:α) ∉ I :=
+not_congr I.eq_top_iff_one
+@[simp]
+theorem unit_mul_mem_iff_mem {x y : α} (hy : is_unit y) : y * x ∈ I ↔ x ∈ I :=
+begin
+  refine ⟨λ h, _, λ h, I.mul_mem_left y h⟩,
+  obtain ⟨y', hy'⟩ := hy.exists_left_inv,
+  have := I.mul_mem_left y' h,
+  rwa [← mul_assoc, hy', one_mul] at this,
+end
+def span (s : set α) : ideal α := submodule.span α s
+@[simp] lemma submodule_span_eq {s : set α} :
+  submodule.span α s = ideal.span s :=
+rfl
+@[simp] lemma span_empty : span (∅ : set α) = ⊥ := submodule.span_empty
+@[simp] lemma span_univ : span (set.univ : set α) = ⊤ := submodule.span_univ
+lemma span_union (s t : set α) : span (s ∪ t) = span s ⊔ span t :=
+submodule.span_union _ _
+lemma span_Union {ι} (s : ι → set α) : span (⋃ i, s i) = ⨆ i, span (s i) :=
+submodule.span_Union _
+lemma mem_span {s : set α} (x) : x ∈ span s ↔ ∀ p : ideal α, s ⊆ p → x ∈ p :=
+mem_Inter₂
+lemma subset_span {s : set α} : s ⊆ span s := submodule.subset_span
+lemma span_le {s : set α} {I} : span s ≤ I ↔ s ⊆ I := submodule.span_le
+lemma span_mono {s t : set α} : s ⊆ t → span s ≤ span t := submodule.span_mono
+@[simp] lemma span_eq : span (I : set α) = I := submodule.span_eq _
+@[simp] lemma span_singleton_one : span ({1} : set α) = ⊤ :=
+(eq_top_iff_one _).2 $ subset_span $ mem_singleton _
+lemma mem_span_insert {s : set α} {x y} :
+  x ∈ span (insert y s) ↔ ∃ a (z ∈ span s), x = a * y + z := submodule.mem_span_insert
+lemma mem_span_singleton' {x y : α} :
+  x ∈ span ({y} : set α) ↔ ∃ a, a * y = x := submodule.mem_span_singleton
+lemma span_insert (x) (s : set α) : span (insert x s) = span ({x} : set α) ⊔ span s :=
+submodule.span_insert x s
+lemma span_eq_bot {s : set α} : span s = ⊥ ↔ ∀ x ∈ s, (x:α) = 0 := submodule.span_eq_bot
+@[simp] lemma span_singleton_eq_bot {x} : span ({x} : set α) = ⊥ ↔ x = 0 :=
+submodule.span_singleton_eq_bot
+@[simp] lemma span_zero : span (0 : set α) = ⊥ := by rw [←set.singleton_zero, span_singleton_eq_bot]
+@[simp] lemma span_one : span (1 : set α) = ⊤ := by rw [←set.singleton_one, span_singleton_one]
+lemma span_eq_top_iff_finite (s : set α) :
+  span s = ⊤ ↔ ∃ s' : finset α, ↑s' ⊆ s ∧ span (s' : set α) = ⊤ :=
+begin
+  simp_rw eq_top_iff_one,
+  exact ⟨submodule.mem_span_finite_of_mem_span, λ ⟨s', h₁, h₂⟩, span_mono h₁ h₂⟩
+end
+def of_rel (r : α → α → Prop) : ideal α :=
+submodule.span α { x | ∃ (a b) (h : r a b), x + b = a }
+class is_prime (I : ideal α) : Prop :=
+(ne_top' : I ≠ ⊤)
+(mem_or_mem' : ∀ {x y : α}, x * y ∈ I → x ∈ I ∨ y ∈ I)
+theorem is_prime_iff {I : ideal α} :
+  is_prime I ↔ I ≠ ⊤ ∧ ∀ {x y : α}, x * y ∈ I → x ∈ I ∨ y ∈ I :=
+⟨λ h, ⟨h.1, h.2⟩, λ h, ⟨h.1, h.2⟩⟩
+theorem is_prime.ne_top {I : ideal α} (hI : I.is_prime) : I ≠ ⊤ := hI.1
+theorem is_prime.mem_or_mem {I : ideal α} (hI : I.is_prime) :
+  ∀ {x y : α}, x * y ∈ I → x ∈ I ∨ y ∈ I := hI.2
+theorem is_prime.mem_or_mem_of_mul_eq_zero {I : ideal α} (hI : I.is_prime)
+  {x y : α} (h : x * y = 0) : x ∈ I ∨ y ∈ I :=
+hI.mem_or_mem (h.symm ▸ I.zero_mem)
+theorem is_prime.mem_of_pow_mem {I : ideal α} (hI : I.is_prime)
+  {r : α} (n : ℕ) (H : r^n ∈ I) : r ∈ I :=
+begin
+  induction n with n ih,
+  { rw pow_zero at H, exact (mt (eq_top_iff_one _).2 hI.1).elim H },
+  { rw pow_succ at H, exact or.cases_on (hI.mem_or_mem H) id ih }
+end
+lemma not_is_prime_iff {I : ideal α} : ¬ I.is_prime ↔ I = ⊤ ∨ ∃ (x ∉ I) (y ∉ I), x * y ∈ I :=
+begin
+  simp_rw [ideal.is_prime_iff, not_and_distrib, ne.def, not_not, not_forall, not_or_distrib],
+  exact or_congr iff.rfl
+    ⟨λ ⟨x, y, hxy, hx, hy⟩, ⟨x, hx, y, hy, hxy⟩, λ ⟨x, hx, y, hy, hxy⟩, ⟨x, y, hxy, hx, hy⟩⟩
+end
+theorem zero_ne_one_of_proper {I : ideal α} (h : I ≠ ⊤) : (0:α) ≠ 1 :=
+λ hz, I.ne_top_iff_one.1 h $ hz ▸ I.zero_mem
+lemma bot_prime {R : Type*} [ring R] [is_domain R] : (⊥ : ideal R).is_prime :=
+⟨λ h, one_ne_zero (by rwa [ideal.eq_top_iff_one, submodule.mem_bot] at h),
+ λ x y h, mul_eq_zero.mp (by simpa only [submodule.mem_bot] using h)⟩
+class is_maximal (I : ideal α) : Prop := (out : is_coatom I)
+theorem is_maximal_def {I : ideal α} : I.is_maximal ↔ is_coatom I := ⟨λ h, h.1, λ h, ⟨h⟩⟩
+theorem is_maximal.ne_top {I : ideal α} (h : I.is_maximal) : I ≠ ⊤ := (is_maximal_def.1 h).1
+theorem is_maximal_iff {I : ideal α} : I.is_maximal ↔
+  (1:α) ∉ I ∧ ∀ (J : ideal α) x, I ≤ J → x ∉ I → x ∈ J → (1:α) ∈ J :=
+is_maximal_def.trans $ and_congr I.ne_top_iff_one $ forall_congr $ λ J,
+by rw [lt_iff_le_not_le]; exact
+ ⟨λ H x h hx₁ hx₂, J.eq_top_iff_one.1 $
+    H ⟨h, not_subset.2 ⟨_, hx₂, hx₁⟩⟩,
+  λ H ⟨h₁, h₂⟩, let ⟨x, xJ, xI⟩ := not_subset.1 h₂ in
+   J.eq_top_iff_one.2 $ H x h₁ xI xJ⟩
+theorem is_maximal.eq_of_le {I J : ideal α}
+  (hI : I.is_maximal) (hJ : J ≠ ⊤) (IJ : I ≤ J) : I = J :=
+eq_iff_le_not_lt.2 ⟨IJ, λ h, hJ (hI.1.2 _ h)⟩
+instance : is_coatomic (ideal α) :=
+begin
+  apply complete_lattice.coatomic_of_top_compact,
+  rw ←span_singleton_one,
+  exact submodule.singleton_span_is_compact_element 1,
+end
+theorem exists_le_maximal (I : ideal α) (hI : I ≠ ⊤) :
+  ∃ M : ideal α, M.is_maximal ∧ I ≤ M :=
+let ⟨m, hm⟩ := (eq_top_or_exists_le_coatom I).resolve_left hI in ⟨m, ⟨⟨hm.1⟩, hm.2⟩⟩
+variables (α)
+theorem exists_maximal [nontrivial α] : ∃ M : ideal α, M.is_maximal :=
+let ⟨I, ⟨hI, _⟩⟩ := exists_le_maximal (⊥ : ideal α) bot_ne_top in ⟨I, hI⟩
+variables {α}
+instance [nontrivial α] : nontrivial (ideal α) :=
+begin
+  rcases @exists_maximal α _ _ with ⟨M, hM, _⟩,
+  exact nontrivial_of_ne M ⊤ hM
+end
+lemma maximal_of_no_maximal {R : Type u} [semiring R] {P : ideal R}
+(hmax : ∀ m : ideal R, P < m → ¬is_maximal m) (J : ideal R) (hPJ : P < J) : J = ⊤ :=
+begin
+  by_contradiction hnonmax,
+  rcases exists_le_maximal J hnonmax with ⟨M, hM1, hM2⟩,
+  exact hmax M (lt_of_lt_of_le hPJ hM2) hM1,
+end
+theorem mem_span_pair {x y z : α} :
+  z ∈ span ({x, y} : set α) ↔ ∃ a b, a * x + b * y = z :=
+by simp [mem_span_insert, mem_span_singleton', @eq_comm _ _ z]
+theorem is_maximal.exists_inv {I : ideal α}
+  (hI : I.is_maximal) {x} (hx : x ∉ I) : ∃ y, ∃ i ∈ I, y * x + i = 1 :=
+begin
+  cases is_maximal_iff.1 hI with H₁ H₂,
+  rcases mem_span_insert.1 (H₂ (span (insert x I)) x
+    (set.subset.trans (subset_insert _ _) subset_span)
+    hx (subset_span (mem_insert _ _))) with ⟨y, z, hz, hy⟩,
+  refine ⟨y, z, _, hy.symm⟩,
+  rwa ← span_eq I,
+end
+section lattice
+variables {R : Type u} [semiring R]
+lemma mem_sup_left {S T : ideal R} : ∀ {x : R}, x ∈ S → x ∈ S ⊔ T :=
+show S ≤ S ⊔ T, from le_sup_left
+lemma mem_sup_right {S T : ideal R} : ∀ {x : R}, x ∈ T → x ∈ S ⊔ T :=
+show T ≤ S ⊔ T, from le_sup_right
+lemma mem_supr_of_mem {ι : Sort*} {S : ι → ideal R} (i : ι) :
+  ∀ {x : R}, x ∈ S i → x ∈ supr S :=
+show S i ≤ supr S, from le_supr _ _
+lemma mem_Sup_of_mem {S : set (ideal R)} {s : ideal R}
+  (hs : s ∈ S) : ∀ {x : R}, x ∈ s → x ∈ Sup S :=
+show s ≤ Sup S, from le_Sup hs
+theorem mem_Inf {s : set (ideal R)} {x : R} :
+  x ∈ Inf s ↔ ∀ ⦃I⦄, I ∈ s → x ∈ I :=
+⟨λ hx I his, hx I ⟨I, infi_pos his⟩, λ H I ⟨J, hij⟩, hij ▸ λ S ⟨hj, hS⟩, hS ▸ H hj⟩
+@[simp] lemma mem_inf {I J : ideal R} {x : R} : x ∈ I ⊓ J ↔ x ∈ I ∧ x ∈ J := iff.rfl
+@[simp] lemma mem_infi {ι : Sort*} {I : ι → ideal R} {x : R} : x ∈ infi I ↔ ∀ i, x ∈ I i :=
+submodule.mem_infi _
+@[simp] lemma mem_bot {x : R} : x ∈ (⊥ : ideal R) ↔ x = 0 :=
+submodule.mem_bot _
+end lattice
+section pi
+variables (ι : Type v)
+def pi : ideal (ι → α) :=
+{ carrier := { x | ∀ i, x i ∈ I },
+  zero_mem' := λ i, I.zero_mem,
+  add_mem' := λ a b ha hb i, I.add_mem (ha i) (hb i),
+  smul_mem' := λ a b hb i, I.mul_mem_left (a i) (hb i) }
+lemma mem_pi (x : ι → α) : x ∈ I.pi ι ↔ ∀ i, x i ∈ I := iff.rfl
+end pi
+end ideal
+end semiring
+section comm_semiring
+variables {a b : α}
+lemma eq_bot_or_top : I = ⊥ ∨ I = ⊤ :=
+begin
+  rw or_iff_not_imp_right,
+  change _ ≠ _ → _,
+  rw ideal.ne_top_iff_one,
+  intro h1,
+  rw eq_bot_iff,
+  intros r hr,
+  by_cases H : r = 0, {simpa},
+  simpa [H, h1] using I.mul_mem_left r⁻¹ hr,
+end
+lemma eq_bot_of_prime [h : I.is_prime] : I = ⊥ :=
+or_iff_not_imp_right.mp I.eq_bot_or_top h.1
+lemma bot_is_maximal : is_maximal (⊥ : ideal K) :=
+⟨⟨λ h, absurd ((eq_top_iff_one (⊤ : ideal K)).mp rfl) (by rw ← h; simp),
+λ I hI, or_iff_not_imp_left.mp (eq_bot_or_top I) (ne_of_gt hI)⟩⟩
+end ideal
+end division_ring
+section comm_ring
+namespace ideal
+theorem mul_sub_mul_mem {R : Type*} [comm_ring R] (I : ideal R) {a b c d : R}
+  (h1 : a - b ∈ I) (h2 : c - d ∈ I) : a * c - b * d ∈ I :=
+begin
+  rw (show a * c - b * d = (a - b) * c + b * (c - d), by {rw [sub_mul, mul_sub], abel}),
+  exact I.add_mem (I.mul_mem_right _ h1) (I.mul_mem_left _ h2),
+end
+end ideal
+end comm_ring
+namespace ring
+variables {R : Type*} [comm_ring R]
+lemma not_is_field_of_subsingleton {R : Type*} [ring R] [subsingleton R] : ¬ is_field R :=
+λ ⟨⟨x, y, hxy⟩, _, _⟩, hxy (subsingleton.elim x y)
+lemma exists_not_is_unit_of_not_is_field [nontrivial R] (hf : ¬ is_field R) :
+  ∃ x ≠ (0 : R), ¬ is_unit x :=
+begin
+  have : ¬ _ := λ h, hf ⟨exists_pair_ne R, mul_comm, h⟩,
+  simp_rw is_unit_iff_exists_inv,
+  push_neg at ⊢ this,
+  obtain ⟨x, hx, not_unit⟩ := this,
+  exact ⟨x, hx, not_unit⟩
+end
+lemma not_is_field_iff_exists_ideal_bot_lt_and_lt_top [nontrivial R] :
+  ¬ is_field R ↔ ∃ I : ideal R, ⊥ < I ∧ I < ⊤ :=
+begin
+  split,
+  { intro h,
+    obtain ⟨x, nz, nu⟩ := exists_not_is_unit_of_not_is_field h,
+    use ideal.span {x},
+    rw [bot_lt_iff_ne_bot, lt_top_iff_ne_top],
+    exact ⟨mt ideal.span_singleton_eq_bot.mp nz, mt ideal.span_singleton_eq_top.mp nu⟩ },
+  { rintros ⟨I, bot_lt, lt_top⟩ hf,
+    obtain ⟨x, mem, ne_zero⟩ := set_like.exists_of_lt bot_lt,
+    rw submodule.mem_bot at ne_zero,
+    obtain ⟨y, hy⟩ := hf.mul_inv_cancel ne_zero,
+    rw [lt_top_iff_ne_top, ne.def, ideal.eq_top_iff_one, ← hy] at lt_top,
+    exact lt_top (I.mul_mem_right _ mem), }
+end
+lemma not_is_field_iff_exists_prime [nontrivial R] :
+  ¬ is_field R ↔ ∃ p : ideal R, p ≠ ⊥ ∧ p.is_prime :=
+not_is_field_iff_exists_ideal_bot_lt_and_lt_top.trans
+  ⟨λ ⟨I, bot_lt, lt_top⟩, let ⟨p, hp, le_p⟩ := I.exists_le_maximal (lt_top_iff_ne_top.mp lt_top) in
+    ⟨p, bot_lt_iff_ne_bot.mp (lt_of_lt_of_le bot_lt le_p), hp.is_prime⟩,
+   λ ⟨p, ne_bot, prime⟩, ⟨p, bot_lt_iff_ne_bot.mpr ne_bot, lt_top_iff_ne_top.mpr prime.1⟩⟩
+lemma ne_bot_of_is_maximal_of_not_is_field [nontrivial R] {M : ideal R} (max : M.is_maximal)
+  (not_field : ¬ is_field R) : M ≠ ⊥ :=
+begin
+  rintros h,
+  rw h at max,
+  rcases max with ⟨⟨h1, h2⟩⟩,
+  obtain ⟨I, hIbot, hItop⟩ := not_is_field_iff_exists_ideal_bot_lt_and_lt_top.mp not_field,
+  exact ne_of_lt hItop (h2 I hIbot),
+end
+end ring
+namespace ideal
+variables {R : Type u} [comm_ring R] [nontrivial R]
+lemma bot_lt_of_maximal (M : ideal R) [hm : M.is_maximal] (non_field : ¬ is_field R) : ⊥ < M :=
+begin
+  rcases (ring.not_is_field_iff_exists_ideal_bot_lt_and_lt_top.1 non_field)
+    with ⟨I, Ibot, Itop⟩,
+  split, { simp },
+  intro mle,
+  apply @irrefl _ (<) _ (⊤ : ideal R),
+  have : M = ⊥ := eq_bot_iff.mpr mle,
+  rw this at *,
+  rwa hm.1.2 I Ibot at Itop,
+end
+end ideal
+variables {a b : α}
+def nonunits (α : Type u) [monoid α] : set α := { a | ¬is_unit a }
+@[simp] theorem mem_nonunits_iff [monoid α] : a ∈ nonunits α ↔ ¬ is_unit a := iff.rfl
+theorem mul_mem_nonunits_right [comm_monoid α] :
+  b ∈ nonunits α → a * b ∈ nonunits α :=
+mt is_unit_of_mul_is_unit_right
+theorem mul_mem_nonunits_left [comm_monoid α] :
+  a ∈ nonunits α → a * b ∈ nonunits α :=
+mt is_unit_of_mul_is_unit_left
+theorem zero_mem_nonunits [semiring α] : 0 ∈ nonunits α ↔ (0:α) ≠ 1 :=
+not_congr is_unit_zero_iff
+@[simp] theorem one_not_mem_nonunits [monoid α] : (1:α) ∉ nonunits α :=
+not_not_intro is_unit_one
+theorem coe_subset_nonunits [semiring α] {I : ideal α} (h : I ≠ ⊤) :
+  (I : set α) ⊆ nonunits α :=
+λ x hx hu, h $ I.eq_top_of_is_unit_mem hx hu
+lemma exists_max_ideal_of_mem_nonunits [comm_semiring α] (h : a ∈ nonunits α) :
+  ∃ I : ideal α, I.is_maximal ∧ a ∈ I :=
+begin
+  have : ideal.span ({a} : set α) ≠ ⊤,
+  { intro H, rw ideal.span_singleton_eq_top at H, contradiction },
+  rcases ideal.exists_le_maximal _ this with ⟨I, Imax, H⟩,
+  use [I, Imax], apply H, apply ideal.subset_span, exact set.mem_singleton a
+end

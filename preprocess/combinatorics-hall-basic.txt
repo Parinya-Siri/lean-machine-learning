@@ -1,0 +1,109 @@
+import combinatorics.hall.finite
+import topology.category.Top.limits
+open finset
+universes u v
+def hall_matchings_on {ι : Type u} {α : Type v} (t : ι → finset α) (ι' : finset ι) :=
+{f : ι' → α | function.injective f ∧ ∀ x, f x ∈ t x}
+def hall_matchings_on.restrict {ι : Type u} {α : Type v}
+  (t : ι → finset α) {ι' ι'' : finset ι} (h : ι' ⊆ ι'')
+  (f : hall_matchings_on t ι'') : hall_matchings_on t ι' :=
+begin
+  refine ⟨λ i, f.val ⟨i, h i.property⟩, _⟩,
+  cases f.property with hinj hc,
+  refine ⟨_, λ i, hc ⟨i, h i.property⟩⟩,
+  rintro ⟨i, hi⟩ ⟨j, hj⟩ hh,
+  simpa only [subtype.mk_eq_mk] using hinj hh,
+end
+lemma hall_matchings_on.nonempty {ι : Type u} {α : Type v} [decidable_eq α]
+  (t : ι → finset α) (h : (∀ (s : finset ι), s.card ≤ (s.bUnion t).card))
+  (ι' : finset ι) : nonempty (hall_matchings_on t ι') :=
+begin
+  classical,
+  refine ⟨classical.indefinite_description _ _⟩,
+  apply (all_card_le_bUnion_card_iff_exists_injective' (λ (i : ι'), t i)).mp,
+  intro s',
+  convert h (s'.image coe) using 1,
+  simp only [card_image_of_injective s' subtype.coe_injective],
+  rw image_bUnion,
+end
+theorem finset.all_card_le_bUnion_card_iff_exists_injective
+  {ι : Type u} {α : Type v} [decidable_eq α] (t : ι → finset α) :
+  (∀ (s : finset ι), s.card ≤ (s.bUnion t).card) ↔
+    (∃ (f : ι → α), function.injective f ∧ ∀ x, f x ∈ t x) :=
+begin
+  split,
+  { intro h,
+    haveI : ∀ (ι' : (finset ι)ᵒᵖ), nonempty ((hall_matchings_functor t).obj ι') :=
+      λ ι', hall_matchings_on.nonempty t h ι'.unop,
+    classical,
+    haveI : Π (ι' : (finset ι)ᵒᵖ), fintype ((hall_matchings_functor t).obj ι') := begin
+      intro ι',
+      rw [hall_matchings_functor],
+      apply_instance,
+    end,
+    obtain ⟨u, hu⟩ := nonempty_sections_of_fintype_inverse_system (hall_matchings_functor t),
+    refine ⟨_, _, _⟩,
+      exact λ i, (u (opposite.op ({i} : finset ι))).val
+                 ⟨i, by simp only [opposite.unop_op, mem_singleton]⟩, },
+      intros i i',
+      have subi : ({i} : finset ι) ⊆ {i,i'} := by simp,
+      have subi' : ({i'} : finset ι) ⊆ {i,i'} := by simp,
+      have le : ∀ {s t : finset ι}, s ⊆ t → s ≤ t := λ _ _ h, h,
+      rw [←hu (category_theory.hom_of_le (le subi)).op,
+          ←hu (category_theory.hom_of_le (le subi')).op],
+      let uii' := u (opposite.op ({i,i'} : finset ι)),
+      exact λ h, subtype.mk_eq_mk.mp (uii'.property.1 h), },
+      intro i,
+      apply (u (opposite.op ({i} : finset ι))).property.2, }, },
+    rintro ⟨f, hf₁, hf₂⟩ s,
+    rw ←finset.card_image_of_injective s hf₁,
+    apply finset.card_le_of_subset,
+    intro _,
+    rw [finset.mem_image, finset.mem_bUnion],
+    rintros ⟨x, hx, rfl⟩,
+    exact ⟨x, hx, hf₂ x⟩, },
+end
+instance {α : Type u} {β : Type v} [decidable_eq β]
+  (r : α → β → Prop) [∀ (a : α), fintype (rel.image r {a})]
+  (A : finset α) : fintype (rel.image r A) :=
+begin
+  have h : rel.image r A = (A.bUnion (λ a, (rel.image r {a}).to_finset) : set β),
+  { ext, simp [rel.image], },
+  rw [h],
+  apply finset_coe.fintype,
+end
+theorem fintype.all_card_le_rel_image_card_iff_exists_injective
+  {α : Type u} {β : Type v} [decidable_eq β]
+  (r : α → β → Prop) [∀ (a : α), fintype (rel.image r {a})] :
+  (∀ (A : finset α), A.card ≤ fintype.card (rel.image r A)) ↔
+    (∃ (f : α → β), function.injective f ∧ ∀ x, r x (f x)) :=
+begin
+  let r' := λ a, (rel.image r {a}).to_finset,
+  have h : ∀ (A : finset α), fintype.card (rel.image r A) = (A.bUnion r').card,
+  { intro A,
+    rw ←set.to_finset_card,
+    apply congr_arg,
+    ext b,
+    simp [rel.image], },
+  have h' : ∀ (f : α → β) x, r x (f x) ↔ f x ∈ r' x,
+  { simp [rel.image], },
+  simp only [h, h'],
+  apply finset.all_card_le_bUnion_card_iff_exists_injective,
+end
+theorem fintype.all_card_le_filter_rel_iff_exists_injective
+  {α : Type u} {β : Type v} [fintype β]
+  (r : α → β → Prop) [∀ a, decidable_pred (r a)] :
+  (∀ (A : finset α), A.card ≤ (univ.filter (λ (b : β), ∃ a ∈ A, r a b)).card) ↔
+    (∃ (f : α → β), function.injective f ∧ ∀ x, r x (f x)) :=
+begin
+  haveI := classical.dec_eq β,
+  let r' := λ a, univ.filter (λ b, r a b),
+  have h : ∀ (A : finset α), (univ.filter (λ (b : β), ∃ a ∈ A, r a b)) = (A.bUnion r'),
+  { intro A,
+    ext b,
+    simp, },
+  have h' : ∀ (f : α → β) x, r x (f x) ↔ f x ∈ r' x,
+  { simp, },
+  simp_rw [h, h'],
+  apply finset.all_card_le_bUnion_card_iff_exists_injective,
+end

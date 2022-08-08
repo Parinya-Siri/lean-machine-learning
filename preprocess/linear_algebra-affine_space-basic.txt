@@ -1,0 +1,2 @@
+import algebra.add_torsor
+localized "notation `affine_space` := add_torsor" in affine

@@ -1,0 +1,23 @@
+import category_theory.monoidal.functor
+import category_theory.monoidal.braided
+import category_theory.monoidal.transport
+import category_theory.skeletal
+namespace category_theory
+open monoidal_category
+universes v u
+variables {C : Type u} [category.{v} C] [monoidal_category C]
+@[reducible]
+def monoid_of_skeletal_monoidal (hC : skeletal C) : monoid C :=
+{ mul := λ X Y, (X ⊗ Y : C),
+  one := (𝟙_ C : C),
+  one_mul := λ X, hC ⟨λ_ X⟩,
+  mul_one := λ X, hC ⟨ρ_ X⟩,
+  mul_assoc := λ X Y Z, hC ⟨α_ X Y Z⟩ }
+def comm_monoid_of_skeletal_braided [braided_category C] (hC : skeletal C) :
+  comm_monoid C :=
+{ mul_comm := λ X Y, hC ⟨β_ X Y⟩,
+  ..monoid_of_skeletal_monoidal hC }
+noncomputable instance : monoidal_category (skeleton C) :=
+monoidal.transport (skeleton_equivalence C).symm
+noncomputable instance : monoid (skeleton C) :=
+monoid_of_skeletal_monoidal (skeleton_is_skeleton _).skel

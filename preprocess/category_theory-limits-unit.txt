@@ -1,0 +1,19 @@
+import category_theory.punit
+import category_theory.limits.has_limits
+universe v
+open category_theory
+namespace category_theory.limits
+variables {J : Type v} [small_category J] {F : J ⥤ discrete punit}
+def punit_cone : cone F :=
+⟨⟨⟨⟩⟩, (functor.punit_ext _ _).hom⟩
+def punit_cocone : cocone F :=
+⟨⟨⟨⟩⟩, (functor.punit_ext _ _).hom⟩
+def punit_cone_is_limit {c : cone F} : is_limit c :=
+by tidy
+def punit_cocone_is_colimit {c : cocone F} : is_colimit c :=
+by tidy
+instance : has_limits (discrete punit) :=
+by tidy
+instance : has_colimits (discrete punit) :=
+by tidy
+end category_theory.limits

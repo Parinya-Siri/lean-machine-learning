@@ -1,0 +1,49 @@
+import category_theory.preadditive
+import algebra.module.linear_map
+import algebra.invertible
+import linear_algebra.basic
+import algebra.algebra.basic
+universes w v u
+open category_theory.limits
+open linear_map
+namespace category_theory
+class linear (R : Type w) [semiring R] (C : Type u) [category.{v} C] [preadditive C] :=
+(hom_module : Π X Y : C, module R (X ⟶ Y) . tactic.apply_instance)
+(smul_comp' : ∀ (X Y Z : C) (r : R) (f : X ⟶ Y) (g : Y ⟶ Z),
+  (r • f) ≫ g = r • (f ≫ g) . obviously)
+(comp_smul' : ∀ (X Y Z : C) (f : X ⟶ Y) (r : R) (g : Y ⟶ Z),
+  f ≫ (r • g) = r • (f ≫ g) . obviously)
+attribute [instance] linear.hom_module
+restate_axiom linear.smul_comp'
+restate_axiom linear.comp_smul'
+attribute [simp,reassoc] linear.smul_comp
+@[simps]
+def left_comp {X Y : C} (Z : C) (f : X ⟶ Y) : (Y ⟶ Z) →ₗ[R] (X ⟶ Z) :=
+{ to_fun := λ g, f ≫ g,
+  map_add' := by simp,
+  map_smul' := by simp, }
+@[simps]
+def right_comp (X : C) {Y Z : C} (g : Y ⟶ Z) : (X ⟶ Y) →ₗ[R] (X ⟶ Z) :=
+{ to_fun := λ f, f ≫ g,
+  map_add' := by simp,
+  map_smul' := by simp, }
+instance {X Y : C} (f : X ⟶ Y) [epi f] (r : R) [invertible r] : epi (r • f) :=
+⟨λ R g g' H, begin
+  rw [smul_comp, smul_comp, ←comp_smul, ←comp_smul, cancel_epi] at H,
+  simpa [smul_smul] using congr_arg (λ f, ⅟r • f) H,
+end⟩
+instance {X Y : C} (f : X ⟶ Y) [mono f] (r : R) [invertible r] : mono (r • f) :=
+⟨λ R g g' H, begin
+  rw [comp_smul, comp_smul, ←smul_comp, ←smul_comp, cancel_mono] at H,
+  simpa [smul_smul] using congr_arg (λ f, ⅟r • f) H,
+end⟩
+end
+section
+variables {S : Type w} [comm_semiring S] [linear S C]
+@[simps]
+def comp (X Y Z : C) : (X ⟶ Y) →ₗ[S] ((Y ⟶ Z) →ₗ[S] (X ⟶ Z)) :=
+{ to_fun := λ f, left_comp S Z f,
+  map_add' := by { intros, ext, simp, },
+  map_smul' := by { intros, ext, simp, }, }
+end
+end category_theory.linear

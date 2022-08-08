@@ -1,0 +1,90 @@
+import tactic.linarith.verification
+import tactic.linarith.preprocessing
+open tactic native
+namespace linarith
+meta def get_contr_lemma_name_and_type : expr → option (name × expr)
+| `(@has_lt.lt %%tp %%_ _ _) := return (`lt_of_not_ge, tp)
+| `(@has_le.le %%tp %%_ _ _) := return (`le_of_not_gt, tp)
+| `(@eq %%tp _ _) := return (``eq_of_not_lt_of_not_gt, tp)
+| `(@ne %%tp _ _) := return (`not.intro, tp)
+| `(@ge %%tp %%_ _ _) := return (`le_of_not_gt, tp)
+| `(@gt %%tp %%_ _ _) := return (`lt_of_not_ge, tp)
+| `(¬ @has_lt.lt %%tp %%_ _ _) := return (`not.intro, tp)
+| `(¬ @has_le.le %%tp %%_ _ _) := return (`not.intro, tp)
+| `(¬ @eq %%tp _ _) := return (``not.intro, tp)
+| `(¬ @ge %%tp %%_ _ _) := return (`not.intro, tp)
+| `(¬ @gt %%tp %%_ _ _) := return (`not.intro, tp)
+| _ := none
+meta def apply_contr_lemma : tactic (option (expr × expr)) :=
+do t ← target,
+   match get_contr_lemma_name_and_type t with
+   | some (nm, tp) :=
+     do refine ((expr.const nm []) pexpr.mk_placeholder), v ← intro1, return $ some (tp, v)
+   | none := return none
+   end
+meta def partition_by_type (l : list expr) : tactic (rb_lmap expr expr) :=
+l.mfoldl (λ m h, do tp ← ineq_prf_tp h, return $ m.insert tp h) mk_rb_map
+meta def try_linarith_on_lists (cfg : linarith_config) (ls : list (list expr)) : tactic expr :=
+(first $ ls.map $ prove_false_by_linarith cfg) <|> fail "linarith failed to find a contradiction"
+meta def run_linarith_on_pfs (cfg : linarith_config) (hyps : list expr) (pref_type : option expr) :
+  tactic unit :=
+let single_process := λ hyps : list expr, do
+   linarith_trace_proofs
+     ("after preprocessing, linarith has " ++ to_string hyps.length ++ " facts:") hyps,
+   hyp_set ← partition_by_type hyps,
+   linarith_trace format!"hypotheses appear in {hyp_set.size} different types",
+   match pref_type with
+   | some t := prove_false_by_linarith cfg (hyp_set.ifind t) <|>
+               try_linarith_on_lists cfg (rb_map.values (hyp_set.erase t))
+   | none := try_linarith_on_lists cfg (rb_map.values hyp_set)
+   end in
+let preprocessors := cfg.preprocessors.get_or_else default_preprocessors,
+    preprocessors := if cfg.split_ne then linarith.remove_ne::preprocessors else preprocessors in
+do hyps ← preprocess preprocessors hyps,
+hyps.mmap' $ λ hs, do set_goals [hs.1], single_process hs.2 >>= exact
+meta def filter_hyps_to_type (restr_type : expr) (hyps : list expr) : tactic (list expr) :=
+hyps.mfilter $ λ h, do
+  ht ← infer_type h,
+  match get_contr_lemma_name_and_type ht with
+  | some (_, htype) := succeeds $ unify htype restr_type
+  | none := return ff
+  end
+meta def get_restrict_type (e : expr) : tactic expr :=
+do m ← mk_mvar,
+   unify `(some %%m : option Type) e,
+   instantiate_mvars m
+end linarith
+open linarith
+meta def tactic.linarith (reduce_semi : bool) (only_on : bool) (hyps : list pexpr)
+  (cfg : linarith_config := {}) : tactic unit :=
+focus1 $
+do t ← target,
+   pref_type_and_new_var_from_tgt ← apply_contr_lemma,
+   when pref_type_and_new_var_from_tgt.is_none $
+     if cfg.exfalso then linarith_trace "using exfalso" >> exfalso
+     else fail "linarith failed: target is not a valid comparison",
+   let cfg := cfg.update_reducibility reduce_semi,
+   let (pref_type, new_var) :=
+     pref_type_and_new_var_from_tgt.elim (none, none) (prod.map some some),
+meta def tactic.interactive.linarith (red : parse ((tk "!")?))
+  (restr : parse ((tk "only")?)) (hyps : parse pexpr_list?)
+  (cfg : linarith_config := {}) : tactic unit :=
+tactic.linarith red.is_some restr.is_some (hyps.get_or_else []) cfg
+add_hint_tactic "linarith"
+add_tactic_doc
+{ name       := "linarith",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.linarith],
+  tags       := ["arithmetic", "decision procedure", "finishing"] }
+meta def tactic.interactive.nlinarith (red : parse ((tk "!")?))
+  (restr : parse ((tk "only")?)) (hyps : parse pexpr_list?)
+  (cfg : linarith_config := {}) : tactic unit :=
+tactic.linarith red.is_some restr.is_some (hyps.get_or_else [])
+  { cfg with preprocessors := some $
+      cfg.preprocessors.get_or_else default_preprocessors ++ [nlinarith_extras] }
+add_hint_tactic "nlinarith"
+add_tactic_doc
+{ name       := "nlinarith",
+  category   := doc_category.tactic,
+  decl_names := [`tactic.interactive.nlinarith],
+  tags       := ["arithmetic", "decision procedure", "finishing"] }

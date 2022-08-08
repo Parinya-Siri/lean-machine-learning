@@ -1,0 +1,52 @@
+universe u
+@[to_additive
+  "Every lattice ordered commutative additive group is a distributive lattice"
+]
+def lattice_ordered_comm_group_to_distrib_lattice (α : Type u)
+  [s: lattice α] [comm_group α] [covariant_class α α (*) (≤)] : distrib_lattice α :=
+{ le_sup_inf :=
+  begin
+    intros,
+    rw [← mul_le_mul_iff_left (x ⊓ (y ⊓ z)), inf_mul_sup x (y ⊓ z),
+      ← inv_mul_le_iff_le_mul, le_inf_iff],
+    split,
+    { rw [inv_mul_le_iff_le_mul, ← inf_mul_sup x y],
+      apply mul_le_mul',
+      { apply inf_le_inf_left, apply inf_le_left, },
+      { apply inf_le_left, } },
+    { rw [inv_mul_le_iff_le_mul, ← inf_mul_sup x z],
+      apply mul_le_mul',
+      { apply inf_le_inf_left, apply inf_le_right, },
+      { apply inf_le_right, }, }
+  end,
+  ..s }
+@[to_additive "If `a` is positive, then it is equal to its positive component `a⁺`."]
+lemma pos_of_one_le (a : α) (h : 1 ≤ a) : a⁺ = a :=
+by { rw m_pos_part_def, exact sup_of_le_left h, }
+@[simp, to_additive abs_abs "The unary operation of taking the absolute value is idempotent."]
+lemma mabs_mabs [covariant_class α α (*) (≤)] (a : α) : | |a| | = |a| :=
+mabs_of_one_le _ (one_le_abs _)
+@[to_additive abs_sup_sub_sup_le_abs]
+lemma mabs_sup_div_sup_le_mabs [covariant_class α α (*) (≤)] (a b c : α) :
+  |(a ⊔ c) / (b ⊔ c)| ≤ |a / b| :=
+begin
+  apply le_of_mul_le_of_one_le_left,
+  { rw abs_div_sup_mul_abs_div_inf, },
+  { exact one_le_abs _, },
+end
+@[to_additive abs_inf_sub_inf_le_abs]
+lemma mabs_inf_div_inf_le_mabs [covariant_class α α (*) (≤)] (a b c : α) :
+  |(a ⊓ c) / (b ⊓ c)| ≤ |a / b| :=
+begin
+  apply le_of_mul_le_of_one_le_right,
+  { rw abs_div_sup_mul_abs_div_inf, },
+  { exact one_le_abs _, },
+end
+@[to_additive abs_add_le]
+lemma mabs_mul_le [covariant_class α α (*) (≤)] (a b : α) : |a * b| ≤ |a| * |b| :=
+begin
+  apply sup_le,
+  { exact mul_le_mul' (le_mabs a) (le_mabs b), },
+  { rw mul_inv,
+    exact mul_le_mul' (inv_le_abs _) (inv_le_abs _), }
+end

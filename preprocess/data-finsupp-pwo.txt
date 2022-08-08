@@ -1,0 +1,8 @@
+import data.finsupp.order
+import order.well_founded_set
+lemma finsupp.is_pwo {α σ : Type*} [has_zero α] [linear_order α] [is_well_order α (<)] [fintype σ]
+  (S : set (σ →₀ α)) : S.is_pwo :=
+begin
+  rw ← finsupp.equiv_fun_on_fintype.symm.image_preimage S,
+  refine set.partially_well_ordered_on.image_of_monotone_on (pi.is_pwo _) (λ a b ha hb, id),
+end

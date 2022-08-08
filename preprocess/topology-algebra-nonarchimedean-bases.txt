@@ -1,0 +1,233 @@
+import topology.algebra.nonarchimedean.basic
+import topology.algebra.filter_basis
+import algebra.module.submodule.pointwise
+open set filter function lattice add_group_with_zero_nhd
+open_locale topological_space filter pointwise
+structure ring_subgroups_basis {A ι : Type*} [ring A] (B : ι → add_subgroup A) : Prop :=
+(inter : ∀ i j, ∃ k, B k ≤ B i ⊓ B j)
+(mul : ∀ i, ∃ j, (B j : set A) * B j ⊆ B i)
+(left_mul : ∀ x : A, ∀ i, ∃ j, (B j : set A) ⊆ (λ y : A, x*y) ⁻¹' (B i))
+(right_mul : ∀ x : A, ∀ i, ∃ j, (B j : set A) ⊆ (λ y : A, y*x) ⁻¹' (B i))
+namespace ring_subgroups_basis
+variables {A ι : Type*} [ring A]
+lemma of_comm {A ι : Type*} [comm_ring A] (B : ι → add_subgroup A)
+  (inter : ∀ i j, ∃ k, B k ≤ B i ⊓ B j)
+  (mul : ∀ i, ∃ j, (B j : set A) * B j ⊆ B i)
+  (left_mul : ∀ x : A, ∀ i, ∃ j, (B j : set A) ⊆ (λ y : A, x*y) ⁻¹' (B i)) :
+  ring_subgroups_basis B :=
+{ inter := inter,
+  mul := mul,
+  left_mul := left_mul,
+  right_mul := begin
+    intros x i,
+    cases left_mul x i with j hj,
+    use j,
+    simpa [mul_comm] using hj
+  end }
+def to_ring_filter_basis [nonempty ι] {B : ι → add_subgroup A}
+  (hB : ring_subgroups_basis B) : ring_filter_basis A :=
+{ sets := {U | ∃ i, U = B i},
+  nonempty := by { inhabit ι, exact ⟨B default, default, rfl⟩ },
+  inter_sets := begin
+    rintros _ _ ⟨i, rfl⟩ ⟨j, rfl⟩,
+    cases hB.inter i j with k hk,
+    use [B k, k, rfl, hk]
+  end,
+  zero' := by { rintros _ ⟨i, rfl⟩, exact (B i).zero_mem },
+  add' := begin
+    rintros _ ⟨i, rfl⟩,
+    use [B i, i, rfl],
+    rintros x ⟨y, z, y_in, z_in, rfl⟩,
+    exact (B i).add_mem y_in z_in
+  end,
+  neg' := begin
+    rintros _ ⟨i, rfl⟩,
+    use [B i, i, rfl],
+    intros x x_in,
+    exact (B i).neg_mem x_in
+  end,
+  conj' := begin
+    rintros x₀ _ ⟨i, rfl⟩,
+    use [B i, i, rfl],
+    simp
+  end,
+  mul' := begin
+    rintros _ ⟨i, rfl⟩,
+    cases hB.mul i with k hk,
+    use [B k, k, rfl, hk]
+  end,
+  mul_left' := begin
+    rintros x₀ _ ⟨i, rfl⟩,
+    cases hB.left_mul x₀ i with k hk,
+    use [B k, k, rfl, hk]
+  end,
+  mul_right' := begin
+    rintros x₀ _ ⟨i, rfl⟩,
+    cases hB.right_mul x₀ i with k hk,
+    use [B k, k, rfl, hk]
+  end }
+variables [nonempty ι] {B : ι → add_subgroup A} (hB : ring_subgroups_basis B)
+lemma mem_add_group_filter_basis_iff {V : set A} :
+  V ∈ hB.to_ring_filter_basis.to_add_group_filter_basis ↔ ∃ i, V = B i :=
+iff.rfl
+lemma mem_add_group_filter_basis (i) :
+  (B i : set A) ∈ hB.to_ring_filter_basis.to_add_group_filter_basis :=
+⟨i, rfl⟩
+def topology : topological_space A :=
+hB.to_ring_filter_basis.to_add_group_filter_basis.topology
+lemma has_basis_nhds_zero : has_basis (@nhds A hB.topology 0) (λ _, true) (λ i, B i) :=
+⟨begin
+  intros s,
+  rw hB.to_ring_filter_basis.to_add_group_filter_basis.nhds_zero_has_basis.mem_iff,
+  split,
+  { rintro ⟨-, ⟨i, rfl⟩, hi⟩,
+    exact ⟨i, trivial, hi⟩ },
+  { rintro ⟨i, -, hi⟩,
+    exact ⟨B i, ⟨i, rfl⟩, hi⟩ }
+end⟩
+lemma has_basis_nhds (a : A) :
+  has_basis (@nhds A hB.topology a) (λ _, true) (λ i, {b | b - a ∈ B i}) :=
+⟨begin
+  intros s,
+  rw (hB.to_ring_filter_basis.to_add_group_filter_basis.nhds_has_basis a).mem_iff,
+  simp only [exists_prop, exists_true_left],
+  split,
+  { rintro ⟨-, ⟨i, rfl⟩, hi⟩,
+    use i,
+    convert hi,
+    ext b,
+    split,
+    { intros h,
+      use [b - a, h],
+      abel },
+    { rintros ⟨c, hc, rfl⟩,
+      simpa using hc } },
+  { rintros ⟨i, hi⟩,
+    use [B i, i, rfl],
+    rw image_subset_iff,
+    rintro b b_in,
+    apply hi,
+    simpa using b_in }
+end⟩
+def open_add_subgroup (i : ι) : @open_add_subgroup A _ hB.topology:=
+{ is_open' := begin
+    letI := hB.topology,
+    rw is_open_iff_mem_nhds,
+    intros a a_in,
+    rw (hB.has_basis_nhds a).mem_iff,
+    use [i, trivial],
+    rintros b b_in,
+    simpa using (B i).add_mem a_in b_in
+  end,
+  ..B i }
+structure submodules_ring_basis (B : ι → submodule R A) : Prop :=
+(inter : ∀ i j, ∃ k, B k ≤ B i ⊓ B j)
+(left_mul : ∀ (a : A) i, ∃ j, a • B j ≤ B i)
+(mul      : ∀ i, ∃ j, (B j : set A) * B j ⊆ B i)
+namespace submodules_ring_basis
+variables {B : ι → submodule R A} (hB : submodules_ring_basis B)
+lemma to_ring_subgroups_basis (hB : submodules_ring_basis B) :
+  ring_subgroups_basis (λ i, (B i).to_add_subgroup) :=
+begin
+  apply ring_subgroups_basis.of_comm (λ i, (B i).to_add_subgroup) hB.inter hB.mul,
+  intros a i,
+  rcases hB.left_mul a i with ⟨j, hj⟩,
+  use j,
+  rintros b (b_in : b ∈ B j),
+  exact hj ⟨b, b_in, rfl⟩
+end
+def topology [nonempty ι] (hB : submodules_ring_basis B) : topological_space A :=
+hB.to_ring_subgroups_basis.topology
+end submodules_ring_basis
+variables {M : Type*} [add_comm_group M] [module R M]
+structure submodules_basis [topological_space R]
+  (B : ι → submodule R M) : Prop :=
+(inter : ∀ i j, ∃ k, B k ≤ B i ⊓ B j)
+(smul : ∀ (m : M) (i : ι), ∀ᶠ a in 𝓝 (0 : R), a • m ∈ B i)
+namespace submodules_basis
+variables [topological_space R] [nonempty ι] {B : ι → submodule R M}
+          (hB : submodules_basis B)
+include hB
+def to_module_filter_basis : module_filter_basis R M :=
+{ sets := {U | ∃ i, U = B i},
+  nonempty := by { inhabit ι, exact ⟨B default, default, rfl⟩ },
+  inter_sets := begin
+    rintros _ _ ⟨i, rfl⟩ ⟨j, rfl⟩,
+    cases hB.inter i j with k hk,
+    use [B k, k, rfl, hk]
+  end,
+  zero' := by { rintros _ ⟨i, rfl⟩, exact (B i).zero_mem },
+  add' := begin
+    rintros _ ⟨i, rfl⟩,
+    use [B i, i, rfl],
+    rintros x ⟨y, z, y_in, z_in, rfl⟩,
+    exact (B i).add_mem y_in z_in
+  end,
+  neg' := begin
+    rintros _ ⟨i, rfl⟩,
+    use [B i, i, rfl],
+    intros x x_in,
+    exact (B i).neg_mem x_in
+  end,
+  conj' := begin
+    rintros x₀ _ ⟨i, rfl⟩,
+    use [B i, i, rfl],
+    simp
+  end,
+  smul' := begin
+    rintros _ ⟨i, rfl⟩,
+    use [univ, univ_mem, B i, i, rfl],
+    rintros _ ⟨a, m, -, hm, rfl⟩,
+    exact (B i).smul_mem _ hm
+  end,
+  smul_left' := begin
+    rintros x₀ _ ⟨i, rfl⟩,
+    use [B i, i, rfl],
+    intros m,
+    exact (B i).smul_mem _
+  end,
+  smul_right' := begin
+    rintros m₀ _ ⟨i, rfl⟩,
+    exact hB.smul m₀ i
+  end }
+def topology : topological_space M :=
+hB.to_module_filter_basis.to_add_group_filter_basis.topology
+def open_add_subgroup (i : ι) : @open_add_subgroup M _ hB.topology :=
+{ is_open' := begin
+    letI := hB.topology,
+    rw is_open_iff_mem_nhds,
+    intros a a_in,
+    rw (hB.to_module_filter_basis.to_add_group_filter_basis.nhds_has_basis a).mem_iff,
+    use [B i, i, rfl],
+    rintros - ⟨b, b_in, rfl⟩,
+    exact (B i).add_mem a_in b_in
+  end,
+  ..(B i).to_add_subgroup }
+library_note "nonarchimedean non instances"
+end submodules_basis
+section
+variables [topological_space R] {B : ι → submodule R A} (hB : submodules_ring_basis B)
+          (hsmul : ∀ (m : A) (i : ι), ∀ᶠ (a : R) in 𝓝 0, a • m ∈ B i)
+lemma submodules_ring_basis.to_submodules_basis : submodules_basis B :=
+{ inter := hB.inter,
+  smul := hsmul }
+example [nonempty ι] : hB.topology = (hB.to_submodules_basis hsmul).topology := rfl
+end
+structure ring_filter_basis.submodules_basis (BR : ring_filter_basis R)
+  (B : ι → submodule R M) : Prop :=
+(inter : ∀ i j, ∃ k, B k ≤ B i ⊓ B j)
+(smul : ∀ (m : M) (i : ι), ∃ U ∈ BR, U ⊆ (λ a, a • m) ⁻¹' B i)
+lemma ring_filter_basis.submodules_basis_is_basis (BR : ring_filter_basis R) {B : ι → submodule R M}
+  (hB : BR.submodules_basis B) : @submodules_basis ι R _ M _ _ BR.topology B  :=
+{ inter := hB.inter,
+  smul := begin
+    letI := BR.topology,
+    intros m i,
+    rcases hB.smul m i with ⟨V, V_in, hV⟩,
+    exact mem_of_superset (BR.to_add_group_filter_basis.mem_nhds_zero V_in) hV
+  end }
+def ring_filter_basis.module_filter_basis [nonempty ι] (BR : ring_filter_basis R)
+  {B : ι → submodule R M} (hB : BR.submodules_basis B) :
+  @module_filter_basis R M _ BR.topology _ _ :=
+@submodules_basis.to_module_filter_basis  ι R _ M _ _ BR.topology _ _
+  (BR.submodules_basis_is_basis hB)

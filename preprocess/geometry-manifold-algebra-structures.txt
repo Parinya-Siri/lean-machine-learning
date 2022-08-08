@@ -1,0 +1,9 @@
+import geometry.manifold.algebra.lie_group
+open_locale manifold
+section smooth_ring
+variables {𝕜 : Type*} [nondiscrete_normed_field 𝕜]
+{H : Type*} [topological_space H]
+{E : Type*} [normed_group E] [normed_space 𝕜 E]
+lemma topological_semiring_of_smooth [semiring R] [smooth_ring I R] :
+  topological_semiring R :=
+{ .. has_continuous_mul_of_smooth I, .. has_continuous_add_of_smooth I }

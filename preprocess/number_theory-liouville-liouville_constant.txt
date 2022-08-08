@@ -1,0 +1,40 @@
+import number_theory.liouville.basic
+noncomputable theory
+open_locale nat big_operators
+open real finset
+namespace liouville
+def liouville_number (m : ℝ) : ℝ := ∑' (i : ℕ), 1 / m ^ i!
+def liouville_number_initial_terms (m : ℝ) (k : ℕ) : ℝ := ∑ i in range (k+1), 1 / m ^ i!
+def liouville_number_tail (m : ℝ) (k : ℕ) : ℝ := ∑' i, 1 / m ^ (i + (k+1))!
+lemma liouville_number_tail_pos {m : ℝ} (hm : 1 < m) (k : ℕ) :
+  0 < liouville_number_tail m k :=
+lemma liouville_number_eq_initial_terms_add_tail {m : ℝ} (hm : 1 < m) (k : ℕ) :
+  liouville_number m = liouville_number_initial_terms m k +
+  liouville_number_tail m k :=
+(sum_add_tsum_nat_add _ (summable_one_div_pow_of_le hm (λ i, i.self_le_factorial))).symm
+lemma tsum_one_div_pow_factorial_lt (n : ℕ) {m : ℝ} (m1 : 1 < m) :
+  ∑' (i : ℕ), 1 / m ^ (i + (n + 1))! < (1 - 1 / m)⁻¹ * (1 / m ^ (n + 1)!) :=
+lemma liouville_number_rat_initial_terms {m : ℕ} (hm : 0 < m) (k : ℕ) :
+∃ p : ℕ, liouville_number_initial_terms m k = p / m ^ k! :=
+begin
+  induction k with k h,
+  { exact ⟨1, by rw [liouville_number_initial_terms, range_one, sum_singleton, nat.cast_one]⟩ },
+  { rcases h with ⟨p_k, h_k⟩,
+    use p_k * (m ^ ((k + 1)! - k!)) + 1,
+    unfold liouville_number_initial_terms at h_k ⊢,
+    rw [sum_range_succ, h_k, div_add_div, div_eq_div_iff, add_mul],
+    { norm_cast,
+      rw [add_mul, one_mul, nat.factorial_succ,
+        show k.succ * k! - k! = (k.succ - 1) * k!, by rw [tsub_mul, one_mul],
+        nat.succ_sub_one, add_mul, one_mul, pow_add],
+      simp [mul_assoc] },
+    refine mul_ne_zero_iff.mpr ⟨_, _⟩,
+    all_goals { exact pow_ne_zero _ (nat.cast_ne_zero.mpr hm.ne.symm) } }
+end
+theorem is_liouville {m : ℕ} (hm : 2 ≤ m) :
+  liouville (liouville_number m) :=
+begin
+lemma is_transcendental {m : ℕ} (hm : 2 ≤ m) :
+  _root_.transcendental ℤ (liouville_number m) :=
+transcendental (is_liouville hm)
+end liouville

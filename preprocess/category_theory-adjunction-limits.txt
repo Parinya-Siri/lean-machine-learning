@@ -1,0 +1,123 @@
+import category_theory.adjunction.basic
+import category_theory.limits.creates
+open opposite
+namespace category_theory.adjunction
+open category_theory
+open category_theory.functor
+open category_theory.limits
+universes v u v₁ v₂ v₀ u₁ u₂
+section arbitrary_universe
+variables {C : Type u₁} [category.{v₁} C] {D : Type u₂} [category.{v₂} D]
+variables {F : C ⥤ D} {G : D ⥤ C} (adj : F ⊣ G)
+include adj
+section preservation_colimits
+variables {J : Type u} [category.{v} J] (K : J ⥤ C)
+def functoriality_right_adjoint : cocone (K ⋙ F) ⥤ cocone K :=
+(cocones.functoriality _ G) ⋙
+  (cocones.precompose (K.right_unitor.inv ≫ (whisker_left K adj.unit) ≫ (associator _ _ _).inv))
+local attribute [reducible] functoriality_right_adjoint
+@[simps] def functoriality_unit :
+  𝟭 (cocone K) ⟶ cocones.functoriality _ F ⋙ functoriality_right_adjoint adj K :=
+{ app := λ c, { hom := adj.unit.app c.X } }
+@[simps] def functoriality_counit :
+  functoriality_right_adjoint adj K ⋙ cocones.functoriality _ F ⟶ 𝟭 (cocone (K ⋙ F)) :=
+{ app := λ c, { hom := adj.counit.app c.X } }
+def functoriality_is_left_adjoint :
+  is_left_adjoint (cocones.functoriality K F) :=
+{ right := functoriality_right_adjoint adj K,
+  adj := mk_of_unit_counit
+  { unit := functoriality_unit adj K,
+    counit := functoriality_counit adj K } }
+def left_adjoint_preserves_colimits : preserves_colimits_of_size.{v u} F :=
+{ preserves_colimits_of_shape := λ J 𝒥,
+  { preserves_colimit := λ F,
+    by exactI
+    { preserves := λ c hc, is_colimit.iso_unique_cocone_morphism.inv
+        (λ s, @equiv.unique _ _ (is_colimit.iso_unique_cocone_morphism.hom hc _)
+          (((adj.functoriality_is_left_adjoint _).adj).hom_equiv _ _)) } } }.
+omit adj
+lemma has_colimits_of_shape_of_equivalence (E : C ⥤ D) [is_equivalence E]
+  [has_colimits_of_shape J D] : has_colimits_of_shape J C :=
+⟨λ F, by exactI has_colimit_of_comp_equivalence F E⟩
+lemma has_colimits_of_equivalence (E : C ⥤ D) [is_equivalence E] [has_colimits_of_size.{v u} D] :
+  has_colimits_of_size.{v u} C :=
+⟨λ J hJ, by { exactI has_colimits_of_shape_of_equivalence E }⟩
+end preservation_colimits
+section preservation_limits
+variables {J : Type u} [category.{v} J] (K : J ⥤ D)
+def functoriality_left_adjoint : cone (K ⋙ G) ⥤ cone K :=
+(cones.functoriality _ F) ⋙ (cones.postcompose
+    ((associator _ _ _).hom ≫ (whisker_left K adj.counit) ≫ K.right_unitor.hom))
+local attribute [reducible] functoriality_left_adjoint
+@[simps] def functoriality_unit' :
+  𝟭 (cone (K ⋙ G)) ⟶ functoriality_left_adjoint adj K ⋙ cones.functoriality _ G :=
+{ app := λ c, { hom := adj.unit.app c.X, } }
+@[simps] def functoriality_counit' :
+  cones.functoriality _ G ⋙ functoriality_left_adjoint adj K ⟶ 𝟭 (cone K) :=
+{ app := λ c, { hom := adj.counit.app c.X, } }
+def functoriality_is_right_adjoint :
+  is_right_adjoint (cones.functoriality K G) :=
+{ left := functoriality_left_adjoint adj K,
+  adj := mk_of_unit_counit
+  { unit := functoriality_unit' adj K,
+    counit := functoriality_counit' adj K } }
+def right_adjoint_preserves_limits : preserves_limits_of_size.{v u} G :=
+{ preserves_limits_of_shape := λ J 𝒥,
+  { preserves_limit := λ K,
+    by exactI
+    { preserves := λ c hc, is_limit.iso_unique_cone_morphism.inv
+        (λ s, @equiv.unique _ _ (is_limit.iso_unique_cone_morphism.hom hc _)
+          (((adj.functoriality_is_right_adjoint _).adj).hom_equiv _ _).symm) } } }.
+omit adj
+lemma has_limits_of_shape_of_equivalence (E : D ⥤ C) [is_equivalence E] [has_limits_of_shape J C] :
+  has_limits_of_shape J D :=
+⟨λ F, by exactI has_limit_of_comp_equivalence F E⟩
+lemma has_limits_of_equivalence (E : D ⥤ C) [is_equivalence E] [has_limits_of_size.{v u} C] :
+  has_limits_of_size.{v u} D :=
+⟨λ J hJ, by exactI has_limits_of_shape_of_equivalence E⟩
+end preservation_limits
+@[simps]
+def cocones_iso_component_hom {J : Type u} [category.{v} J] {K : J ⥤ C}
+  (Y : D) (t : ((cocones J D).obj (op (K ⋙ F))).obj Y) :
+  (G ⋙ (cocones J C).obj (op K)).obj Y :=
+{ app := λ j, (adj.hom_equiv (K.obj j) Y) (t.app j),
+  naturality' := λ j j' f, by { erw [← adj.hom_equiv_naturality_left, t.naturality], dsimp, simp } }
+@[simps]
+def cocones_iso_component_inv {J : Type u} [category.{v} J] {K : J ⥤ C}
+  (Y : D) (t : (G ⋙ (cocones J C).obj (op K)).obj Y) :
+  ((cocones J D).obj (op (K ⋙ F))).obj Y :=
+{ app := λ j, (adj.hom_equiv (K.obj j) Y).symm (t.app j),
+  naturality' := λ j j' f,
+  begin
+    erw [← adj.hom_equiv_naturality_left_symm, ← adj.hom_equiv_naturality_right_symm, t.naturality],
+    dsimp, simp
+  end }
+@[simps]
+def cones_iso_component_hom {J : Type u} [category.{v} J] {K : J ⥤ D}
+  (X : Cᵒᵖ) (t : (functor.op F ⋙ (cones J D).obj K).obj X) :
+  ((cones J C).obj (K ⋙ G)).obj X :=
+{ app := λ j, (adj.hom_equiv (unop X) (K.obj j)) (t.app j),
+  naturality' := λ j j' f,
+  begin
+    erw [← adj.hom_equiv_naturality_right, ← t.naturality, category.id_comp, category.id_comp],
+    refl
+  end }
+@[simps]
+def cones_iso_component_inv {J : Type u} [category.{v} J] {K : J ⥤ D}
+  (X : Cᵒᵖ) (t : ((cones J C).obj (K ⋙ G)).obj X) :
+  (functor.op F ⋙ (cones J D).obj K).obj X :=
+{ app := λ j, (adj.hom_equiv (unop X) (K.obj j)).symm (t.app j),
+  naturality' := λ j j' f,
+  begin
+    erw [← adj.hom_equiv_naturality_right_symm, ← t.naturality, category.id_comp, category.id_comp]
+  end }
+end arbitrary_universe
+variables {C : Type u₁} [category.{v₀} C] {D : Type u₂} [category.{v₀} D]
+{F : C ⥤ D} {G : D ⥤ C} (adj : F ⊣ G)
+def cones_iso {J : Type u} [category.{v} J] {K : J ⥤ D} :
+  F.op ⋙ (cones J D).obj K ≅ (cones J C).obj (K ⋙ G) :=
+nat_iso.of_components (λ X,
+{ hom := cones_iso_component_hom adj X,
+  inv := cones_iso_component_inv adj X, } )
+(by tidy)
+end category_theory.adjunction

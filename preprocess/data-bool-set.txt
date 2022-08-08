@@ -1,0 +1,9 @@
+import data.bool.basic
+import data.set.basic
+open set
+namespace bool
+@[simp] lemma univ_eq : (univ : set bool) = {ff, tt} :=
+(eq_univ_of_forall bool.dichotomy).symm
+@[simp] lemma range_eq {α : Type*} (f : bool → α) : range f = {f ff, f tt} :=
+by rw [← image_univ, univ_eq, image_pair]
+end bool

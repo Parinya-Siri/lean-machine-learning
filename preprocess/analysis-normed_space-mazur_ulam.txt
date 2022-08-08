@@ -1,0 +1,55 @@
+import topology.instances.real_vector_space
+import analysis.normed_space.affine_isometry
+import linear_algebra.affine_space.midpoint
+variables
+  {E PE : Type*} [normed_group E] [normed_space ℝ E] [metric_space PE] [normed_add_torsor E PE]
+  {F PF : Type*} [normed_group F] [normed_space ℝ F] [metric_space PF] [normed_add_torsor F PF]
+open set affine_map affine_isometry_equiv
+noncomputable theory
+namespace isometric
+include E
+lemma midpoint_fixed {x y : PE} :
+  ∀ e : PE ≃ᵢ PE, e x = x → e y = y → e (midpoint ℝ x y) = midpoint ℝ x y :=
+begin
+  set z := midpoint ℝ x y,
+lemma map_midpoint (f : PE ≃ᵢ PF) (x y : PE) : f (midpoint ℝ x y) = midpoint ℝ (f x) (f y) :=
+begin
+  set e : PE ≃ᵢ PE :=
+    ((f.trans $ (point_reflection ℝ $ midpoint ℝ (f x) (f y)).to_isometric).trans f.symm).trans
+    (point_reflection ℝ $ midpoint ℝ x y).to_isometric,
+  have hx : e x = x, by simp,
+  have hy : e y = y, by simp,
+  have hm := e.midpoint_fixed hx hy,
+  simp only [e, trans_apply] at hm,
+  rwa [← eq_symm_apply, to_isometric_symm, point_reflection_symm, coe_to_isometric,
+    coe_to_isometric, point_reflection_self, symm_apply_eq, point_reflection_fixed_iff] at hm
+end
+def to_real_linear_isometry_equiv_of_map_zero (f : E ≃ᵢ F) (h0 : f 0 = 0) :
+  E ≃ₗᵢ[ℝ] F :=
+{ norm_map' := λ x, show ∥f x∥ = ∥x∥, by simp only [← dist_zero_right, ← h0, f.dist_eq],
+  .. ((add_monoid_hom.of_map_midpoint ℝ ℝ f h0 f.map_midpoint).to_real_linear_map f.continuous),
+  .. f }
+@[simp] lemma coe_to_real_linear_equiv_of_map_zero (f : E ≃ᵢ F) (h0 : f 0 = 0) :
+  ⇑(f.to_real_linear_isometry_equiv_of_map_zero h0) = f := rfl
+@[simp] lemma coe_to_real_linear_equiv_of_map_zero_symm (f : E ≃ᵢ F) (h0 : f 0 = 0) :
+  ⇑(f.to_real_linear_isometry_equiv_of_map_zero h0).symm = f.symm := rfl
+def to_real_linear_isometry_equiv (f : E ≃ᵢ F) : E ≃ₗᵢ[ℝ] F :=
+(f.trans (isometric.add_right (f 0)).symm).to_real_linear_isometry_equiv_of_map_zero
+  (by simpa only [sub_eq_add_neg] using sub_self (f 0))
+@[simp] lemma to_real_linear_equiv_apply (f : E ≃ᵢ F) (x : E) :
+  (f.to_real_linear_isometry_equiv : E → F) x = f x - f 0 :=
+(sub_eq_add_neg (f x) (f 0)).symm
+@[simp] lemma to_real_linear_isometry_equiv_symm_apply (f : E ≃ᵢ F) (y : F) :
+  (f.to_real_linear_isometry_equiv.symm : F → E) y = f.symm (y + f 0) := rfl
+def to_real_affine_isometry_equiv (f : PE ≃ᵢ PF) : PE ≃ᵃⁱ[ℝ] PF :=
+affine_isometry_equiv.mk' f
+  (((vadd_const (classical.arbitrary PE)).trans $ f.trans
+    (vadd_const (f $ classical.arbitrary PE)).symm).to_real_linear_isometry_equiv)
+  (classical.arbitrary PE) (λ p, by simp)
+@[simp] lemma coe_fn_to_real_affine_isometry_equiv (f : PE ≃ᵢ PF) :
+  ⇑f.to_real_affine_isometry_equiv = f :=
+rfl
+@[simp] lemma coe_to_real_affine_isometry_equiv (f : PE ≃ᵢ PF) :
+  f.to_real_affine_isometry_equiv.to_isometric = f :=
+by { ext, refl }
+end isometric

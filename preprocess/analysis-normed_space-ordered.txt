@@ -1,0 +1,26 @@
+import analysis.normed_space.basic
+open filter set
+open_locale topological_space
+class normed_linear_ordered_group (α : Type*)
+extends linear_ordered_add_comm_group α, has_norm α, metric_space α :=
+(dist_eq : ∀ x y, dist x y = norm (x - y))
+@[priority 100] instance normed_linear_ordered_group.to_normed_group (α : Type*)
+  [normed_linear_ordered_group α] : normed_group α :=
+⟨normed_linear_ordered_group.dist_eq⟩
+class normed_linear_ordered_field (α : Type*)
+extends linear_ordered_field α, has_norm α, metric_space α :=
+(dist_eq : ∀ x y, dist x y = norm (x - y))
+(norm_mul' : ∀ a b, norm (a * b) = norm a * norm b)
+@[priority 100] instance normed_linear_ordered_field.to_normed_field (α : Type*)
+  [normed_linear_ordered_field α] : normed_field α :=
+{ dist_eq := normed_linear_ordered_field.dist_eq,
+  norm_mul' := normed_linear_ordered_field.norm_mul' }
+@[priority 100] instance normed_linear_ordered_field.to_normed_linear_ordered_group (α : Type*)
+[normed_linear_ordered_field α] : normed_linear_ordered_group α :=
+⟨normed_linear_ordered_field.dist_eq⟩
+noncomputable
+instance : normed_linear_ordered_field ℚ :=
+⟨dist_eq_norm, norm_mul⟩
+noncomputable
+instance : normed_linear_ordered_field ℝ :=
+⟨dist_eq_norm, norm_mul⟩

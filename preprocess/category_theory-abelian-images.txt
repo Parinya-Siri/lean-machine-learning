@@ -1,0 +1,43 @@
+import category_theory.limits.shapes.kernels
+noncomputable theory
+universes v u
+open category_theory
+open category_theory.limits
+namespace category_theory.abelian
+variables {C : Type u} [category.{v} C] [has_zero_morphisms C] [has_kernels C] [has_cokernels C]
+variables {P Q : C} (f : P ⟶ Q)
+section image
+protected abbreviation image : C := kernel (cokernel.π f)
+protected abbreviation image.ι : abelian.image f ⟶ Q :=
+kernel.ι (cokernel.π f)
+protected abbreviation factor_thru_image : P ⟶ abelian.image f :=
+kernel.lift (cokernel.π f) f $ cokernel.condition f
+@[simp, reassoc] protected lemma image.fac :
+  abelian.factor_thru_image f ≫ image.ι f = f :=
+kernel.lift_ι _ _ _
+instance mono_factor_thru_image [mono f] : mono (abelian.factor_thru_image f) :=
+mono_of_mono_fac $ image.fac f
+end image
+section coimage
+protected abbreviation coimage : C := cokernel (kernel.ι f)
+protected abbreviation coimage.π : P ⟶ abelian.coimage f :=
+cokernel.π (kernel.ι f)
+protected abbreviation factor_thru_coimage : abelian.coimage f ⟶ Q :=
+cokernel.desc (kernel.ι f) f $ kernel.condition f
+protected lemma coimage.fac : coimage.π f ≫ abelian.factor_thru_coimage f = f :=
+cokernel.π_desc _ _ _
+instance epi_factor_thru_coimage [epi f] : epi (abelian.factor_thru_coimage f) :=
+epi_of_epi_fac $ coimage.fac f
+end coimage
+def coimage_image_comparison : abelian.coimage f ⟶ abelian.image f :=
+cokernel.desc (kernel.ι f) (kernel.lift (cokernel.π f) f (by simp)) $ (by { ext, simp, })
+def coimage_image_comparison' : abelian.coimage f ⟶ abelian.image f :=
+kernel.lift (cokernel.π f) (cokernel.desc (kernel.ι f) f (by simp)) (by { ext, simp, })
+lemma coimage_image_comparison_eq_coimage_image_comparison' :
+  coimage_image_comparison f = coimage_image_comparison' f :=
+by { ext, simp [coimage_image_comparison, coimage_image_comparison'], }
+@[simp, reassoc]
+lemma coimage_image_factorisation :
+  coimage.π f ≫ coimage_image_comparison f ≫ image.ι f = f :=
+by simp [coimage_image_comparison]
+end category_theory.abelian

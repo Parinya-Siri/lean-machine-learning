@@ -1,0 +1,120 @@
+import data.stream.defs
+import tactic.ext
+open nat function option
+universes u v w
+namespace stream
+variables {α : Type u} {β : Type v} {δ : Type w}
+instance {α} [inhabited α] : inhabited (stream α) :=
+⟨stream.const default⟩
+protected theorem eta (s : stream α) : head s :: tail s = s :=
+funext (λ i, begin cases i; refl end)
+theorem nth_zero_cons (a : α) (s : stream α) : nth (a :: s) 0 = a := rfl
+theorem head_cons (a : α) (s : stream α) : head (a :: s) = a := rfl
+theorem tail_cons (a : α) (s : stream α) : tail (a :: s) = s := rfl
+theorem tail_drop (n : nat) (s : stream α) : tail (drop n s) = drop n (tail s) :=
+funext (λ i, begin unfold tail drop, simp [nth, nat.add_comm, nat.add_left_comm] end)
+theorem nth_drop (n m : nat) (s : stream α) : nth (drop m s) n = nth s (n + m) := rfl
+theorem tail_eq_drop (s : stream α) : tail s = drop 1 s := rfl
+theorem drop_drop (n m : nat) (s : stream α) : drop n (drop m s) = drop (n+m) s :=
+funext (λ i, begin unfold drop, rw nat.add_assoc end)
+theorem nth_succ (n : nat) (s : stream α) : nth s (succ n) = nth (tail s) n := rfl
+theorem drop_succ (n : nat) (s : stream α) : drop (succ n) s = drop n (tail s) := rfl
+@[simp] lemma head_drop {α} (a : stream α) (n : ℕ) : (a.drop n).head = a.nth n :=
+by simp only [drop, head, nat.zero_add, stream.nth]
+@[ext] protected theorem ext {s₁ s₂ : stream α} : (∀ n, nth s₁ n = nth s₂ n) → s₁ = s₂ :=
+assume h, funext h
+theorem all_def (p : α → Prop) (s : stream α) : all p s = ∀ n, p (nth s n) := rfl
+theorem any_def (p : α → Prop) (s : stream α) : any p s = ∃ n, p (nth s n) := rfl
+theorem mem_cons (a : α) (s : stream α) : a ∈ (a::s) :=
+exists.intro 0 rfl
+theorem mem_cons_of_mem {a : α} {s : stream α} (b : α) : a ∈ s → a ∈ b :: s :=
+assume ⟨n, h⟩,
+exists.intro (succ n) (by rw [nth_succ, tail_cons, h])
+theorem eq_or_mem_of_mem_cons {a b : α} {s : stream α} : a ∈ b::s → a = b ∨ a ∈ s :=
+assume ⟨n, h⟩,
+begin
+  cases n with n',
+  { left, exact h },
+  { right, rw [nth_succ, tail_cons] at h, exact ⟨n', h⟩ }
+end
+theorem mem_of_nth_eq {n : nat} {s : stream α} {a : α} : a = nth s n → a ∈ s :=
+assume h, exists.intro n h
+section map
+variable (f : α → β)
+theorem drop_map (n : nat) (s : stream α) : drop n (map f s) = map f (drop n s) :=
+stream.ext (λ i, rfl)
+theorem nth_map (n : nat) (s : stream α) : nth (map f s) n = f (nth s n) := rfl
+theorem tail_map (s : stream α) : tail (map f s) = map f (tail s) :=
+begin rw tail_eq_drop, refl end
+theorem head_map (s : stream α) : head (map f s) = f (head s) := rfl
+theorem map_eq (s : stream α) : map f s = f (head s) :: map f (tail s) :=
+by rw [← stream.eta (map f s), tail_map, head_map]
+theorem map_cons (a : α) (s : stream α) : map f (a :: s) = f a :: map f s :=
+begin rw [← stream.eta (map f (a :: s)), map_eq], refl end
+theorem map_id (s : stream α) : map id s = s := rfl
+theorem map_map (g : β → δ) (f : α → β) (s : stream α) : map g (map f s) = map (g ∘ f) s := rfl
+theorem map_tail (s : stream α) : map f (tail s) = tail (map f s) := rfl
+theorem mem_map {a : α} {s : stream α} : a ∈ s → f a ∈ map f s :=
+assume ⟨n, h⟩,
+exists.intro n (by rw [nth_map, h])
+theorem exists_of_mem_map {f} {b : β} {s : stream α} : b ∈ map f s → ∃ a, a ∈ s ∧ f a = b :=
+assume ⟨n, h⟩, ⟨nth s n, ⟨n, rfl⟩, h.symm⟩
+end map
+section zip
+variable (f : α → β → δ)
+theorem drop_zip (n : nat) (s₁ : stream α) (s₂ : stream β) :
+  drop n (zip f s₁ s₂) = zip f (drop n s₁) (drop n s₂) :=
+stream.ext (λ i, rfl)
+theorem nth_zip (n : nat) (s₁ : stream α) (s₂ : stream β) :
+  nth (zip f s₁ s₂) n = f (nth s₁ n) (nth s₂ n) := rfl
+theorem head_zip (s₁ : stream α) (s₂ : stream β) : head (zip f s₁ s₂) = f (head s₁) (head s₂) := rfl
+theorem tail_zip (s₁ : stream α) (s₂ : stream β) :
+  tail (zip f s₁ s₂) = zip f (tail s₁) (tail s₂) := rfl
+theorem zip_eq (s₁ : stream α) (s₂ : stream β) :
+  zip f s₁ s₂ = f (head s₁) (head s₂) :: zip f (tail s₁) (tail s₂) :=
+begin rw [← stream.eta (zip f s₁ s₂)], refl end
+end zip
+theorem mem_const (a : α) : a ∈ const a :=
+exists.intro 0 rfl
+theorem const_eq (a : α) : const a = a :: const a :=
+begin
+  apply stream.ext, intro n,
+  cases n; refl
+end
+theorem tail_const (a : α) : tail (const a) = const a :=
+suffices tail (a :: const a) = const a, by rwa [← const_eq] at this, rfl
+theorem map_const (f : α → β) (a : α) : map f (const a) = const (f a) := rfl
+theorem nth_const (n : nat) (a : α) : nth (const a) n = a := rfl
+theorem drop_const (n : nat) (a : α) : drop n (const a) = const a :=
+stream.ext (λ i, rfl)
+theorem head_iterate (f : α → α) (a : α) : head (iterate f a) = a := rfl
+theorem tail_iterate (f : α → α) (a : α) : tail (iterate f a) = iterate f (f a) :=
+begin
+  funext n,
+  induction n with n' ih,
+  { refl },
+  { unfold tail iterate,
+    unfold tail iterate at ih,
+    rw add_one at ih, dsimp at ih,
+    rw add_one, dsimp, rw ih }
+end
+theorem iterate_eq (f : α → α) (a : α) : iterate f a = a :: iterate f (f a) :=
+begin
+  rw [← stream.eta (iterate f a)],
+  rw tail_iterate, refl
+end
+theorem nth_zero_iterate (f : α → α) (a : α) : nth (iterate f a) 0 = a := rfl
+theorem nth_succ_iterate (n : nat) (f : α → α) (a : α) :
+  nth (iterate f a) (succ n) = nth (iterate f (f a)) n :=
+by rw [nth_succ, tail_iterate]
+section bisim
+  variable (R : stream α → stream α → Prop)
+  local infix ` ~ `:50 := R
+  def is_bisimulation := ∀ ⦃s₁ s₂⦄, s₁ ~ s₂ → head s₁ = head s₂ ∧ tail s₁ ~ tail s₂
+  theorem nth_of_bisim (bisim : is_bisimulation R) :
+    ∀ {s₁ s₂} n, s₁ ~ s₂ → nth s₁ n = nth s₂ n ∧ drop (n+1) s₁ ~ drop (n+1) s₂
+  | s₁ s₂ 0     h := bisim h
+  | s₁ s₂ (n+1) h :=
+    match bisim h with
+    | ⟨h₁, trel⟩ := nth_of_bisim n trel
+    end

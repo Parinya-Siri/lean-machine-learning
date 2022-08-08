@@ -1,0 +1,12 @@
+import order.category.Frame
+universes u
+open category_theory opposite order topological_space
+@[derive large_category] def Locale := Frameᵒᵖ
+namespace Locale
+instance : has_coe_to_sort Locale Type* := ⟨λ X, X.unop⟩
+instance (X : Locale) : frame X := X.unop.str
+def of (α : Type*) [frame α] : Locale := op $ Frame.of α
+@[simp] lemma coe_of (α : Type*) [frame α] : ↥(of α) = α := rfl
+instance : inhabited Locale := ⟨of punit⟩
+end Locale
+@[simps] def Top_to_Locale : Top ⥤ Locale := Top_op_to_Frame.right_op

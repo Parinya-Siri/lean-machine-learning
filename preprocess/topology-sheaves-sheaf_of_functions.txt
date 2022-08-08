@@ -1,0 +1,23 @@
+import category_theory.limits.shapes.types
+import topology.sheaves.presheaf_of_functions
+import topology.sheaves.sheaf_condition.unique_gluing
+open category_theory
+open category_theory.limits
+open topological_space
+open topological_space.opens
+universe u
+noncomputable theory
+variables (X : Top.{u})
+open Top
+namespace Top.presheaf
+lemma to_Types_is_sheaf (T : X → Type u) : (presheaf_to_Types X T).is_sheaf :=
+is_sheaf_of_is_sheaf_unique_gluing_types _ $ λ ι U sf hsf,
+lemma to_Type_is_sheaf (T : Type u) : (presheaf_to_Type X T).is_sheaf :=
+to_Types_is_sheaf X (λ _, T)
+end Top.presheaf
+namespace Top
+def sheaf_to_Types (T : X → Type u) : sheaf (Type u) X :=
+⟨presheaf_to_Types X T, presheaf.to_Types_is_sheaf _ _⟩
+def sheaf_to_Type (T : Type u) : sheaf (Type u) X :=
+⟨presheaf_to_Type X T, presheaf.to_Type_is_sheaf _ _⟩
+end Top

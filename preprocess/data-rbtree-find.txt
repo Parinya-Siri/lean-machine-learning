@@ -1,0 +1,34 @@
+import data.rbtree.basic
+universe u
+namespace rbnode
+variables {α : Type u}
+@[elab_simple]
+lemma find.induction {p : rbnode α → Prop} (lt) [decidable_rel lt]
+   (t x)
+   (h₁ : p leaf)
+   (h₂ : ∀ l y r (h : cmp_using lt x y = ordering.lt) (ih : p l), p (red_node l y r))
+   (h₃ : ∀ l y r (h : cmp_using lt x y = ordering.eq),            p (red_node l y r))
+   (h₄ : ∀ l y r (h : cmp_using lt x y = ordering.gt) (ih : p r), p (red_node l y r))
+   (h₅ : ∀ l y r (h : cmp_using lt x y = ordering.lt) (ih : p l), p (black_node l y r))
+   (h₆ : ∀ l y r (h : cmp_using lt x y = ordering.eq),            p (black_node l y r))
+   (h₇ : ∀ l y r (h : cmp_using lt x y = ordering.gt) (ih : p r), p (black_node l y r))
+   : p t :=
+begin
+  induction t,
+  case leaf { assumption },
+  case red_node : l y r
+   { cases h : cmp_using lt x y,
+     case ordering.lt { apply h₂, assumption, assumption },
+     case ordering.eq { apply h₃, assumption },
+     case ordering.gt { apply h₄, assumption, assumption }, },
+  case black_node : l y r
+   { cases h : cmp_using lt x y,
+     case ordering.lt { apply h₅, assumption, assumption },
+     case ordering.eq { apply h₆, assumption },
+     case ordering.gt { apply h₇, assumption, assumption }, }
+end
+lemma find_correct {t : rbnode α} {lt x} [decidable_rel lt] [is_strict_weak_order α lt] :
+  ∀ {lo hi} (hs : is_searchable lt t lo hi), mem lt x t ↔ ∃ y, find lt t x = some y ∧ x ≈[lt] y :=
+begin
+  apply find.induction lt t x; intros; simp only [mem, find, *],
+  { simp },

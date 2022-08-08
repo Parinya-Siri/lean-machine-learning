@@ -1,0 +1,110 @@
+import algebra.hom.ring
+open function set
+set_option old_structure_cmd true
+universe u
+variables {α β K : Type*}
+@[protect_proj, ancestor semiring group_with_zero]
+class division_semiring (α : Type*) extends semiring α, group_with_zero α
+@[protect_proj, ancestor ring division_semiring]
+class division_ring (α : Type*) extends ring α, div_inv_monoid α, nontrivial α :=
+(mul_inv_cancel : ∀ {a : α}, a ≠ 0 → a * a⁻¹ = 1)
+(inv_zero : (0 : α)⁻¹ = 0)
+@[protect_proj, ancestor comm_semiring division_semiring comm_group_with_zero]
+class semifield (α : Type*) extends comm_semiring α, division_semiring α, comm_group_with_zero α
+@[protect_proj, ancestor comm_ring division_ring]
+class field (α : Type*) extends comm_ring α, division_ring α
+structure is_field (R : Type u) [semiring R] : Prop :=
+(exists_pair_ne : ∃ (x y : R), x ≠ y)
+(mul_comm : ∀ (x y : R), x * y = y * x)
+(mul_inv_cancel : ∀ {a : R}, a ≠ 0 → ∃ b, a * b = 1)
+lemma semifield.to_is_field (R : Type u) [semifield R] : is_field R :=
+{ mul_inv_cancel := λ a ha, ⟨a⁻¹, mul_inv_cancel ha⟩,
+  ..‹semifield R› }
+lemma field.to_is_field (R : Type u) [field R] : is_field R := semifield.to_is_field _
+@[simp] lemma is_field.nontrivial {R : Type u} [semiring R] (h : is_field R) : nontrivial R :=
+⟨h.exists_pair_ne⟩
+@[simp] lemma not_is_field_of_subsingleton (R : Type u) [semiring R] [subsingleton R] :
+  ¬is_field R :=
+λ h, let ⟨x, y, h⟩ := h.exists_pair_ne in h (subsingleton.elim _ _)
+open_locale classical
+noncomputable def is_field.to_semifield {R : Type u} [semiring R] (h : is_field R) : semifield R :=
+{ inv := λ a, if ha : a = 0 then 0 else classical.some (is_field.mul_inv_cancel h ha),
+  inv_zero := dif_pos rfl,
+  mul_inv_cancel := λ a ha,
+    begin
+      convert classical.some_spec (is_field.mul_inv_cancel h ha),
+      exact dif_neg ha
+    end,
+  .. ‹semiring R›, ..h }
+noncomputable def is_field.to_field {R : Type u} [ring R] (h : is_field R) : field R :=
+{ .. ‹ring R›, ..is_field.to_semifield h }
+lemma uniq_inv_of_is_field (R : Type u) [ring R] (hf : is_field R) :
+  ∀ (x : R), x ≠ 0 → ∃! (y : R), x * y = 1 :=
+begin
+  intros x hx,
+  apply exists_unique_of_exists_of_unique,
+  { exact hf.mul_inv_cancel hx },
+  { intros y z hxy hxz,
+    calc y = y * (x * z) : by rw [hxz, mul_one]
+       ... = (x * y) * z : by rw [← mul_assoc, hf.mul_comm y x]
+       ... = z           : by rw [hxy, one_mul] }
+end
+end is_field
+namespace ring_hom
+section semiring
+variables [semiring α] [division_semiring β]
+@[simp] lemma map_units_inv (f : α →+* β) (u : αˣ) : f ↑u⁻¹ = (f ↑u)⁻¹ :=
+(f : α →* β).map_units_inv u
+variables [nontrivial α] (f : β →+* α) {a : β}
+@[simp] lemma map_eq_zero : f a = 0 ↔ a = 0 := f.to_monoid_with_zero_hom.map_eq_zero
+lemma map_ne_zero : f a ≠ 0 ↔ a ≠ 0 := f.to_monoid_with_zero_hom.map_ne_zero
+end semiring
+section division_semiring
+variables [division_semiring α] [division_semiring β] (f : α →+* β) (a b : α)
+lemma map_inv : f a⁻¹ = (f a)⁻¹ := f.to_monoid_with_zero_hom.map_inv _
+lemma map_div : f (a / b) = f a / f b := f.to_monoid_with_zero_hom.map_div _ _
+end division_semiring
+protected lemma injective [division_ring α] [semiring β] [nontrivial β] (f : α →+* β) :
+  injective f :=
+(injective_iff_map_eq_zero f).2 $ λ x, f.map_eq_zero.1
+end ring_hom
+section noncomputable_defs
+variables {R : Type*} [nontrivial R]
+noncomputable def division_ring_of_is_unit_or_eq_zero [hR : ring R]
+  (h : ∀ (a : R), is_unit a ∨ a = 0) : division_ring R :=
+{ .. (group_with_zero_of_is_unit_or_eq_zero h), .. hR }
+@[reducible]
+noncomputable def field_of_is_unit_or_eq_zero [hR : comm_ring R]
+  (h : ∀ (a : R), is_unit a ∨ a = 0) : field R :=
+{ .. (group_with_zero_of_is_unit_or_eq_zero h), .. hR }
+end noncomputable_defs
+@[reducible]
+protected def function.injective.division_ring [division_ring K] {K'}
+  [has_zero K'] [has_one K'] [has_add K'] [has_mul K'] [has_neg K'] [has_sub K'] [has_inv K']
+  [has_div K'] [has_smul ℕ K'] [has_smul ℤ K'] [has_pow K' ℕ] [has_pow K' ℤ]
+  [has_nat_cast K'] [has_int_cast K']
+  (f : K' → K) (hf : injective f) (zero : f 0 = 0) (one : f 1 = 1)
+  (add : ∀ x y, f (x + y) = f x + f y) (mul : ∀ x y, f (x * y) = f x * f y)
+  (neg : ∀ x, f (-x) = -f x) (sub : ∀ x y, f (x - y) = f x - f y)
+  (inv : ∀ x, f (x⁻¹) = (f x)⁻¹) (div : ∀ x y, f (x / y) = f x / f y)
+  (nsmul : ∀ x (n : ℕ), f (n • x) = n • f x) (zsmul : ∀ x (n : ℤ), f (n • x) = n • f x)
+  (npow : ∀ x (n : ℕ), f (x ^ n) = f x ^ n) (zpow : ∀ x (n : ℤ), f (x ^ n) = f x ^ n)
+  (nat_cast : ∀ n : ℕ, f n = n) (int_cast : ∀ n : ℤ, f n = n) :
+  division_ring K' :=
+{ .. hf.group_with_zero f zero one mul inv div npow zpow,
+  .. hf.ring f zero one add mul neg sub nsmul zsmul npow nat_cast int_cast }
+@[reducible]
+protected def function.injective.field [field K] {K'}
+  [has_zero K'] [has_mul K'] [has_add K'] [has_neg K'] [has_sub K'] [has_one K'] [has_inv K']
+  [has_div K'] [has_smul ℕ K'] [has_smul ℤ K'] [has_pow K' ℕ] [has_pow K' ℤ]
+  [has_nat_cast K'] [has_int_cast K']
+  (f : K' → K) (hf : injective f) (zero : f 0 = 0) (one : f 1 = 1)
+  (add : ∀ x y, f (x + y) = f x + f y) (mul : ∀ x y, f (x * y) = f x * f y)
+  (neg : ∀ x, f (-x) = -f x) (sub : ∀ x y, f (x - y) = f x - f y)
+  (inv : ∀ x, f (x⁻¹) = (f x)⁻¹) (div : ∀ x y, f (x / y) = f x / f y)
+  (nsmul : ∀ x (n : ℕ), f (n • x) = n • f x) (zsmul : ∀ x (n : ℤ), f (n • x) = n • f x)
+  (npow : ∀ x (n : ℕ), f (x ^ n) = f x ^ n) (zpow : ∀ x (n : ℤ), f (x ^ n) = f x ^ n)
+  (nat_cast : ∀ n : ℕ, f n = n) (int_cast : ∀ n : ℤ, f n = n) :
+  field K' :=
+{ .. hf.comm_group_with_zero f zero one mul inv div npow zpow,
+  .. hf.comm_ring f zero one add mul neg sub nsmul zsmul npow nat_cast int_cast }

@@ -1,0 +1,6 @@
+import ring_theory.localization.fraction_ring
+import ring_theory.localization.ideal
+import ring_theory.principal_ideal_domain
+variables {R : Type*} [comm_ring R] (M : submonoid R) (S : Type*) [comm_ring S]
+variables [algebra R S] {P : Type*} [comm_ring P]
+namespace is_localization

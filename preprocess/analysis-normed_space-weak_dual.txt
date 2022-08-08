@@ -1,0 +1,70 @@
+import topology.algebra.module.weak_dual
+import analysis.normed_space.dual
+import analysis.normed_space.operator_norm
+noncomputable theory
+open filter function metric set
+open_locale topological_space filter
+variables {𝕜 : Type*} [nondiscrete_normed_field 𝕜]
+variables {E : Type*} [semi_normed_group E] [normed_space 𝕜 E]
+namespace normed_space
+namespace dual
+def to_weak_dual : dual 𝕜 E ≃ₗ[𝕜] weak_dual 𝕜 E := linear_equiv.refl 𝕜 (E →L[𝕜] 𝕜)
+@[simp] lemma coe_to_weak_dual (x' : dual 𝕜 E) : ⇑(x'.to_weak_dual) = x' := rfl
+@[simp] lemma to_weak_dual_eq_iff (x' y' : dual 𝕜 E) :
+  x'.to_weak_dual = y'.to_weak_dual ↔ x' = y' :=
+to_weak_dual.injective.eq_iff
+theorem to_weak_dual_continuous : continuous (λ (x' : dual 𝕜 E), x'.to_weak_dual) :=
+weak_bilin.continuous_of_continuous_eval _ $ λ z, (inclusion_in_double_dual 𝕜 E z).continuous
+def continuous_linear_map_to_weak_dual : dual 𝕜 E →L[𝕜] weak_dual 𝕜 E :=
+{ cont := to_weak_dual_continuous, .. to_weak_dual, }
+theorem dual_norm_topology_le_weak_dual_topology :
+  (by apply_instance : topological_space (dual 𝕜 E)) ≤
+    (by apply_instance : topological_space (weak_dual 𝕜 E)) :=
+by { convert to_weak_dual_continuous.le_induced, exact induced_id.symm }
+end dual
+end normed_space
+namespace weak_dual
+open normed_space
+def to_normed_dual : weak_dual 𝕜 E ≃ₗ[𝕜] dual 𝕜 E := normed_space.dual.to_weak_dual.symm
+lemma to_normed_dual_apply (x : weak_dual 𝕜 E) (y : E) : (to_normed_dual x) y = x y := rfl
+@[simp] lemma coe_to_normed_dual (x' : weak_dual 𝕜 E) : ⇑(x'.to_normed_dual) = x' := rfl
+@[simp] lemma to_normed_dual_eq_iff (x' y' : weak_dual 𝕜 E) :
+  x'.to_normed_dual = y'.to_normed_dual ↔ x' = y' :=
+weak_dual.to_normed_dual.injective.eq_iff
+lemma is_closed_closed_ball (x' : dual 𝕜 E) (r : ℝ) :
+  is_closed (to_normed_dual ⁻¹' closed_ball x' r) :=
+is_closed_induced_iff'.2 (continuous_linear_map.is_weak_closed_closed_ball x' r)
+variables (𝕜)
+def polar (s : set E) : set (weak_dual 𝕜 E) := to_normed_dual ⁻¹' polar 𝕜 s
+lemma polar_def (s : set E) : polar 𝕜 s = {f : weak_dual 𝕜 E | ∀ x ∈ s, ∥f x∥ ≤ 1} := rfl
+lemma is_closed_polar (s : set E) : is_closed (polar 𝕜 s) :=
+begin
+  simp only [polar_def, set_of_forall],
+  exact is_closed_bInter (λ x hx, is_closed_Iic.preimage (weak_bilin.eval_continuous _ _).norm)
+end
+variable {𝕜}
+lemma is_closed_image_coe_of_bounded_of_closed {s : set (weak_dual 𝕜 E)}
+  (hb : bounded (dual.to_weak_dual ⁻¹' s)) (hc : is_closed s) :
+  is_closed ((coe_fn : weak_dual 𝕜 E → E → 𝕜) '' s) :=
+continuous_linear_map.is_closed_image_coe_of_bounded_of_weak_closed hb (is_closed_induced_iff'.1 hc)
+lemma is_compact_of_bounded_of_closed [proper_space 𝕜] {s : set (weak_dual 𝕜 E)}
+  (hb : bounded (dual.to_weak_dual ⁻¹' s)) (hc : is_closed s) :
+  is_compact s :=
+(embedding.is_compact_iff_is_compact_image fun_like.coe_injective.embedding_induced).mpr $
+  continuous_linear_map.is_compact_image_coe_of_bounded_of_closed_image hb $
+  is_closed_image_coe_of_bounded_of_closed hb hc
+variable (𝕜)
+lemma is_closed_image_polar_of_mem_nhds {s : set E} (s_nhd : s ∈ 𝓝 (0 : E)) :
+  is_closed ((coe_fn : weak_dual 𝕜 E → E → 𝕜) '' polar 𝕜 s) :=
+is_closed_image_coe_of_bounded_of_closed (bounded_polar_of_mem_nhds_zero 𝕜 s_nhd)
+  (is_closed_polar _ _)
+lemma _root_.normed_space.dual.is_closed_image_polar_of_mem_nhds {s : set E}
+  (s_nhd : s ∈ 𝓝 (0 : E)) : is_closed ((coe_fn : dual 𝕜 E → E → 𝕜) '' normed_space.polar 𝕜 s) :=
+is_closed_image_polar_of_mem_nhds 𝕜 s_nhd
+theorem is_compact_polar [proper_space 𝕜] {s : set E} (s_nhd : s ∈ 𝓝 (0 : E)) :
+  is_compact (polar 𝕜 s) :=
+is_compact_of_bounded_of_closed (bounded_polar_of_mem_nhds_zero 𝕜 s_nhd) (is_closed_polar _ _)
+theorem is_compact_closed_ball [proper_space 𝕜] (x' : dual 𝕜 E) (r : ℝ) :
+  is_compact (to_normed_dual ⁻¹' (closed_ball x' r)) :=
+is_compact_of_bounded_of_closed bounded_closed_ball (is_closed_closed_ball x' r)
+end weak_dual

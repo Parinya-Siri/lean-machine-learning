@@ -1,0 +1,12 @@
+import category_theory.simple
+import algebra.category.Module.abelian
+import algebra.category.Module.subobject
+import ring_theory.simple_module
+variables {R M : Type*} [ring R] [add_comm_group M] [module R M]
+open category_theory Module
+lemma simple_iff_is_simple_module : simple (of R M) ↔ is_simple_module R M :=
+(simple_iff_subobject_is_simple_order _).trans (subobject_Module (of R M)).is_simple_order_iff
+instance simple_of_is_simple_module [is_simple_module R M] : simple (of R M) :=
+simple_iff_is_simple_module.mpr ‹_›
+instance is_simple_module_of_simple (M : Module R) [simple M] : is_simple_module R M :=
+simple_iff_is_simple_module.mp (simple.of_iso (of_self_iso M))

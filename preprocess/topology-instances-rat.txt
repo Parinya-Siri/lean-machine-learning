@@ -1,0 +1,34 @@
+import topology.metric_space.basic
+import topology.algebra.order.archimedean
+import topology.instances.int
+import topology.instances.nat
+import topology.instances.real
+noncomputable theory
+open metric set filter
+namespace rat
+instance : metric_space ℚ :=
+metric_space.induced coe rat.cast_injective real.metric_space
+theorem dist_eq (x y : ℚ) : dist x y = |x - y| := rfl
+@[norm_cast, simp] lemma dist_cast (x y : ℚ) : dist (x : ℝ) y = dist x y := rfl
+theorem uniform_continuous_coe_real : uniform_continuous (coe : ℚ → ℝ) :=
+uniform_continuous_comap
+theorem uniform_embedding_coe_real : uniform_embedding (coe : ℚ → ℝ) :=
+uniform_embedding_comap rat.cast_injective
+theorem dense_embedding_coe_real : dense_embedding (coe : ℚ → ℝ) :=
+uniform_embedding_coe_real.dense_embedding rat.dense_range_cast
+theorem embedding_coe_real : embedding (coe : ℚ → ℝ) := dense_embedding_coe_real.to_embedding
+theorem continuous_coe_real : continuous (coe : ℚ → ℝ) := uniform_continuous_coe_real.continuous
+end rat
+@[norm_cast, simp] theorem nat.dist_cast_rat (x y : ℕ) : dist (x : ℚ) y = dist x y :=
+by rw [← nat.dist_cast_real, ← rat.dist_cast]; congr' 1; norm_cast
+lemma nat.uniform_embedding_coe_rat : uniform_embedding (coe : ℕ → ℚ) :=
+uniform_embedding_bot_of_pairwise_le_dist zero_lt_one $ by simpa using nat.pairwise_one_le_dist
+lemma nat.closed_embedding_coe_rat : closed_embedding (coe : ℕ → ℚ) :=
+closed_embedding_of_pairwise_le_dist zero_lt_one $ by simpa using nat.pairwise_one_le_dist
+@[norm_cast, simp] theorem int.dist_cast_rat (x y : ℤ) : dist (x : ℚ) y = dist x y :=
+by rw [← int.dist_cast_real, ← rat.dist_cast]; congr' 1; norm_cast
+lemma int.uniform_embedding_coe_rat : uniform_embedding (coe : ℤ → ℚ) :=
+uniform_embedding_bot_of_pairwise_le_dist zero_lt_one $ by simpa using int.pairwise_one_le_dist
+lemma int.closed_embedding_coe_rat : closed_embedding (coe : ℤ → ℚ) :=
+closed_embedding_of_pairwise_le_dist zero_lt_one $ by simpa using int.pairwise_one_le_dist
+instance : noncompact_space ℚ := int.closed_embedding_coe_rat.noncompact_space

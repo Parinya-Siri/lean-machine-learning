@@ -1,0 +1,146 @@
+import meta.rb_map
+import tactic.lint.basic
+open tactic expr native
+setup_tactic_parser
+@[derive [decidable_eq, inhabited]]
+inductive lint_verbosity | low | medium | high
+meta def get_checks (slow : bool) (extra : list name) (use_only : bool) :
+  tactic (list (name × linter)) := do
+  default ← if use_only then return [] else attribute.get_instances `linter >>= get_linters,
+  let default := if slow then default else default.filter (λ l, l.2.is_fast),
+  list.append default <$> get_linters extra
+meta def lint_core (all_decls non_auto_decls : list declaration) (checks : list (name × linter)) :
+  tactic (list (name × linter × rb_map name string)) := do
+checks.mmap $ λ ⟨linter_name, linter⟩, do
+  let test_decls := if linter.auto_decls then all_decls else non_auto_decls,
+  test_decls ← test_decls.mfilter (λ decl, should_be_linted linter_name decl.to_name),
+  s ← read,
+  let results := test_decls.map_async_chunked $ λ decl, prod.mk decl.to_name $
+      match linter.test decl s with
+      | result.success w _ := w
+      | result.exception msg _ _ :=
+        some $ "LINTER FAILED:\n" ++ msg.elim "(no message)" (λ msg, to_string $ msg ())
+      end,
+  let results := results.foldl (λ (results : rb_map name string) warning,
+    match warning with
+    | (decl_name, some w) := results.insert decl_name w
+    | (_, none) := results
+    end) mk_rb_map,
+  pure (linter_name, linter, results)
+meta def sort_results {α} (e : environment) (results : rb_map name α) : list (name × α) :=
+list.reverse $ rb_lmap.values $ rb_lmap.of_list $
+  results.fold [] $ λ decl linter_warning results,
+    (((e.decl_pos decl).get_or_else ⟨0,0⟩).line, (decl, linter_warning)) :: results
+meta def print_warning (decl_name : name) (warning : string) : format :=
+private def workflow_command_replacements : char → string
+| '%' := "%25"
+| '\n' := "%0A"
+| c := to_string c
+def escape_workflow_command (s : string) : string :=
+"".intercalate $ s.to_list.map workflow_command_replacements
+meta def print_workflow_command (env : environment) (linter_name decl_name : name)
+ (warning : string) : option string := do
+  po ← env.decl_pos decl_name,
+  ol ← env.decl_olean decl_name,
+  return $ sformat!"\n::error file={ol},line={po.line},col={po.column},title=" ++
+    sformat!"Warning from {linter_name} linter::" ++
+    sformat!"{escape_workflow_command $ to_string decl_name} - {escape_workflow_command warning}"
+meta def print_warnings (env : environment) (emit_workflow_commands : bool) (linter_name : name)
+  (results : rb_map name string) : format :=
+format.intercalate format.line $ (sort_results env results).map $
+  λ ⟨decl_name, warning⟩, let form := print_warning decl_name warning in
+    if emit_workflow_commands then
+      form ++ (print_workflow_command env linter_name decl_name warning).get_or_else ""
+    else form
+meta def grouped_by_filename (e : environment) (results : rb_map name string) (drop_fn_chars := 0)
+  (formatter: rb_map name string → format) : format :=
+let results := results.fold (rb_map.mk string (rb_map name string)) $
+  λ decl_name linter_warning results,
+    let fn := (e.decl_olean decl_name).get_or_else "" in
+    results.insert fn (((results.find fn).get_or_else mk_rb_map).insert
+      decl_name linter_warning) in
+let l := results.to_list.reverse.map (λ ⟨fn, results⟩,
+meta def format_linter_results
+  (env : environment)
+  (results : list (name × linter × rb_map name string))
+  (decls non_auto_decls : list declaration)
+  (group_by_filename : option ℕ)
+  (where_desc : string) (slow : bool) (verbose : lint_verbosity) (num_linters : ℕ)
+  if ¬ results.empty then
+    let warnings := match group_by_filename with
+      | none := print_warnings env emit_workflow_commands linter_name results
+      | some dropped :=
+        grouped_by_filename env results dropped
+          (print_warnings env emit_workflow_commands linter_name)
+      end in
+  else if verbose = lint_verbosity.high then
+  else format.nil,
+let s := format.intercalate "\n" (formatted_results.filter (λ f, ¬ f.is_nil)),
+let s := if verbose = lint_verbosity.low then s else
+s
+meta def lint_aux (decls : list declaration) (group_by_filename : option ℕ)
+    (where_desc : string) (slow : bool) (verbose : lint_verbosity) (checks : list (name × linter)) :
+  tactic (name_set × format) := do
+e ← get_env,
+let non_auto_decls := decls.filter (λ d, ¬ d.is_auto_or_internal e),
+results ← lint_core decls non_auto_decls checks,
+let s := format_linter_results e results decls non_auto_decls
+  group_by_filename where_desc slow verbose checks.length,
+let ns := name_set.of_list (do (_,_,rs) ← results, rs.keys),
+pure (ns, s)
+meta def lint (slow : bool := tt) (verbose : lint_verbosity := lint_verbosity.medium)
+  (extra : list name := []) (use_only : bool := ff) : tactic (name_set × format) := do
+  checks ← get_checks slow extra use_only,
+  e ← get_env,
+  let l := e.filter (λ d, e.in_current_file d.to_name),
+  lint_aux l none "in the current file" slow verbose checks
+meta def lint_project_decls (proj_folder : string) : tactic (list declaration) := do
+e ← get_env,
+pure $ e.filter $ λ d, e.is_prefix_of_file proj_folder d.to_name
+meta def lint_project (proj_folder proj_name : string) (slow : bool := tt)
+  (verbose : lint_verbosity := lint_verbosity.medium)
+  (extra : list name := []) (use_only : bool := ff) : tactic (name_set × format) := do
+checks ← get_checks slow extra use_only,
+decls ← lint_project_decls proj_folder,
+lint_aux decls proj_folder.length ("in " ++ proj_name ++ " (only in imported files)")
+  slow verbose checks
+meta def lint_all (slow : bool := tt) (verbose : lint_verbosity := lint_verbosity.medium)
+  (extra : list name := []) (use_only : bool := ff) : tactic (name_set × format) := do
+  checks ← get_checks slow extra use_only,
+  e ← get_env,
+  let l := e.get_decls,
+  lint_aux l (some 0) "in all imported files (including this one)" slow verbose checks
+meta def parse_lint_additions : parser (bool × list name) :=
+prod.mk <$> only_flag <*> (list.map (name.append `linter) <$> ident*)
+meta def parse_verbosity : parser (option lint_verbosity) :=
+tk "-" >> return lint_verbosity.low <|>
+tk "+" >> return lint_verbosity.high <|>
+return none
+meta def lint_cmd_aux
+  (scope : bool → lint_verbosity → list name → bool → tactic (name_set × format)) :
+  parser unit :=
+do verbosity ← parse_verbosity,
+   fast_only ← optional (tk "*"),
+@[user_command] meta def lint_cmd (_ : parse $ tk "#lint") : parser unit :=
+lint_cmd_aux @lint
+@[user_command] meta def lint_mathlib_cmd (_ : parse $ tk "#lint_mathlib") : parser unit :=
+do str ← get_mathlib_dir, lint_cmd_aux (@lint_project str "mathlib")
+@[user_command] meta def lint_all_cmd (_ : parse $ tk "#lint_all") : parser unit :=
+lint_cmd_aux @lint_all
+@[user_command] meta def list_linters (_ : parse $ tk "#list_linters") : parser unit :=
+do env ← get_env,
+let ns := env.decl_filter_map $ λ dcl,
+    if (dcl.to_name.get_prefix = `linter) && (dcl.type = `(linter)) then some dcl.to_name else none,
+   trace "Available linters:\n  linters marked with (*) are in the default lint set\n",
+   ns.mmap' $ λ n, do
+     b ← has_attribute' `linter n,
+     trace $ n.pop_prefix.to_string ++ if b then " (*)" else ""
+@[hole_command] meta def lint_hole_cmd : hole_command :=
+{ name := "Lint",
+  descr := "Lint: Find common mistakes in current file.",
+  action := λ es, do (_, s) ← lint, return [(s.to_string,"")] }
+add_tactic_doc
+{ name                     := "Lint",
+  category                 := doc_category.hole_cmd,
+  decl_names               := [`lint_hole_cmd],
+  tags                     := ["linting"] }

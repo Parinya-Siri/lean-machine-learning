@@ -1,0 +1,56 @@
+import tactic.lint.basic
+open tactic expr
+private meta def simp_lhs_rhs : expr → tactic (expr × expr) | ty := do
+ty ← head_beta ty,
+private meta def simp_lhs (ty : expr): tactic expr :=
+prod.fst <$> simp_lhs_rhs ty
+private meta def simp_is_conditional_core : expr → tactic (option expr) | ty := do
+ty ← head_beta ty,
+match ty with
+| `(¬ %%lhs) := pure lhs
+| `(%%lhs = _) := pure lhs
+| `(%%lhs ↔ _) := pure lhs
+| (expr.pi n bi a b) := do
+  l ← mk_local' n bi a,
+  some lhs ← simp_is_conditional_core (b.instantiate_var l) | pure none,
+  if bi ≠ binder_info.inst_implicit ∧
+      ¬ (lhs.abstract_local l.local_uniq_name).has_var then
+    pure none
+  else
+    pure lhs
+| ty := pure ty
+end
+private meta def simp_is_conditional (ty : expr) : tactic bool :=
+option.is_none <$> simp_is_conditional_core ty
+private meta def heuristic_simp_lemma_extraction (prf : expr) : tactic (list name) :=
+prf.list_constant.to_list.mfilter is_simp_lemma
+meta def is_simp_eq (a b : expr) : tactic bool :=
+if a.get_app_fn.const_name ≠ b.get_app_fn.const_name then pure ff else
+succeeds $ is_def_eq a b transparency.reducible
+meta def simp_nf_linter (timeout := 200000) (d : declaration) : tactic (option string) := do
+tt ← is_simp_lemma d.to_name | pure none,
+library_note "simp-normal form"
+@[linter] meta def linter.simp_nf : linter :=
+{ test := simp_nf_linter,
+  auto_decls := tt,
+  no_errors_found := "All left-hand sides of simp lemmas are in simp-normal form.",
+  errors_found := "SOME SIMP LEMMAS ARE NOT IN SIMP-NORMAL FORM.
+see note [simp-normal form] for tips how to debug this.
+https://leanprover-community.github.io/mathlib_docs/notes.html#simp-normal%20form" }
+private meta def simp_var_head (d : declaration) : tactic (option string) := do
+tt ← is_simp_lemma d.to_name | pure none,
+@[linter] meta def linter.simp_var_head : linter :=
+{ test := simp_var_head,
+  auto_decls := tt,
+  no_errors_found :=
+    "No left-hand sides of a simp lemma has a variable as head symbol.",
+  errors_found := "LEFT-HAND SIDE HAS VARIABLE AS HEAD SYMBOL.\n" ++
+    "Some simp lemmas have a variable as head symbol of the left-hand side:" }
+private meta def simp_comm (d : declaration) : tactic (option string) := do
+tt ← is_simp_lemma d.to_name | pure none,
+@[linter] meta def linter.simp_comm : linter :=
+{ test := simp_comm,
+  auto_decls := tt,
+  no_errors_found := "No commutativity lemma is marked simp.",
+  errors_found := "COMMUTATIVITY LEMMA IS SIMP.\n" ++
+    "Some commutativity lemmas are simp lemmas:" }

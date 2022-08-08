@@ -1,0 +1,46 @@
+import geometry.manifold.algebra.monoid
+noncomputable theory
+open_locale manifold
+@[to_additive
+"An additive Lie group is an additive topological group. This is not an instance for technical
+reasons, see note [Design choices about smooth algebraic structures]."]
+lemma topological_group_of_lie_group : topological_group G :=
+{ continuous_inv := (smooth_inv I).continuous,
+  .. has_continuous_mul_of_smooth I }
+end
+@[to_additive]
+lemma smooth.inv {f : M → G}
+  (hf : smooth I' I f) : smooth I' I (λx, (f x)⁻¹) :=
+(smooth_inv I).comp hf
+@[to_additive]
+lemma smooth_on.inv {f : M → G} {s : set M}
+  (hf : smooth_on I' I f s) : smooth_on I' I (λx, (f x)⁻¹) s :=
+(smooth_inv I).comp_smooth_on hf
+@[to_additive]
+lemma smooth.div {f g : M → G}
+  (hf : smooth I' I f) (hg : smooth I' I g) : smooth I' I (f / g) :=
+by { rw div_eq_mul_inv, exact ((smooth_mul I).comp (hf.prod_mk hg.inv) : _), }
+@[to_additive]
+lemma smooth_on.div {f g : M → G} {s : set M}
+  (hf : smooth_on I' I f s) (hg : smooth_on I' I g s) : smooth_on I' I (f / g) s :=
+by { rw div_eq_mul_inv, exact ((smooth_mul I).comp_smooth_on (hf.prod_mk hg.inv) : _), }
+end lie_group
+section prod_lie_group
+@[to_additive]
+instance {𝕜 : Type*} [nondiscrete_normed_field 𝕜] {H : Type*} [topological_space H]
+  {E : Type*} [normed_group E] [normed_space 𝕜 E]  {I : model_with_corners 𝕜 E H}
+  {G : Type*} [topological_space G] [charted_space H G] [group G] [lie_group I G]
+  {E' : Type*} [normed_group E'] [normed_space 𝕜 E']
+  {H' : Type*} [topological_space H'] {I' : model_with_corners 𝕜 E' H'}
+  {G' : Type*} [topological_space G'] [charted_space H' G']
+  [group G'] [lie_group I' G'] :
+  lie_group (I.prod I') (G×G') :=
+{ smooth_inv := smooth_fst.inv.prod_mk smooth_snd.inv,
+  ..has_smooth_mul.prod _ _ _ _ }
+end prod_lie_group
+instance normed_space_lie_add_group {𝕜 : Type*} [nondiscrete_normed_field 𝕜]
+  {E : Type*} [normed_group E] [normed_space 𝕜 E] :
+  lie_add_group (𝓘(𝕜, E)) E :=
+{ smooth_add := smooth_iff.2 ⟨continuous_add, λ x y, cont_diff_add.cont_diff_on⟩,
+  smooth_neg := smooth_iff.2 ⟨continuous_neg, λ x y, cont_diff_neg.cont_diff_on⟩,
+  .. model_space_smooth }

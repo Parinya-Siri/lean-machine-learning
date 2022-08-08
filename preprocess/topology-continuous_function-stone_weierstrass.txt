@@ -1,0 +1,90 @@
+import topology.continuous_function.weierstrass
+import analysis.complex.basic
+noncomputable theory
+namespace continuous_map
+variables {X : Type*} [topological_space X] [compact_space X]
+def attach_bound (f : C(X, ℝ)) : C(X, set.Icc (-∥f∥) (∥f∥)) :=
+{ to_fun := λ x, ⟨f x, ⟨neg_norm_le_apply f x, apply_le_norm f x⟩⟩ }
+@[simp] lemma attach_bound_apply_coe (f : C(X, ℝ)) (x : X) : ((attach_bound f) x : ℝ) = f x := rfl
+lemma polynomial_comp_attach_bound (A : subalgebra ℝ C(X, ℝ)) (f : A) (g : polynomial ℝ) :
+  (g.to_continuous_map_on (set.Icc (-∥f∥) ∥f∥)).comp (f : C(X, ℝ)).attach_bound =
+    polynomial.aeval f g :=
+begin
+  ext,
+  simp only [continuous_map.coe_comp, function.comp_app,
+    continuous_map.attach_bound_apply_coe,
+    polynomial.to_continuous_map_on_to_fun,
+    polynomial.aeval_subalgebra_coe,
+    polynomial.aeval_continuous_map_apply,
+    polynomial.to_continuous_map_to_fun],
+end
+lemma polynomial_comp_attach_bound_mem (A : subalgebra ℝ C(X, ℝ)) (f : A) (g : polynomial ℝ) :
+  (g.to_continuous_map_on (set.Icc (-∥f∥) ∥f∥)).comp (f : C(X, ℝ)).attach_bound ∈ A :=
+begin
+  rw polynomial_comp_attach_bound,
+  apply set_like.coe_mem,
+end
+theorem comp_attach_bound_mem_closure
+  (A : subalgebra ℝ C(X, ℝ)) (f : A) (p : C(set.Icc (-∥f∥) (∥f∥), ℝ)) :
+  p.comp (attach_bound f) ∈ A.topological_closure :=
+begin
+  dsimp [set.separates_points_strongly] at sep,
+  let g : X → X → L := λ x y, (sep f x y).some,
+  have w₁ : ∀ x y, g x y x = f x := λ x y, (sep f x y).some_spec.1,
+  have w₂ : ∀ x y, g x y y = f y := λ x y, (sep f x y).some_spec.2,
+theorem subalgebra_topological_closure_eq_top_of_separates_points
+  (A : subalgebra ℝ C(X, ℝ)) (w : A.separates_points) :
+  A.topological_closure = ⊤ :=
+begin
+theorem continuous_map_mem_subalgebra_closure_of_separates_points
+  (A : subalgebra ℝ C(X, ℝ)) (w : A.separates_points)
+  (f : C(X, ℝ)) :
+  f ∈ A.topological_closure :=
+begin
+  rw subalgebra_topological_closure_eq_top_of_separates_points A w,
+  simp,
+end
+theorem exists_mem_subalgebra_near_continuous_map_of_separates_points
+  (A : subalgebra ℝ C(X, ℝ)) (w : A.separates_points)
+  (f : C(X, ℝ)) (ε : ℝ) (pos : 0 < ε) :
+  ∃ (g : A), ∥(g : C(X, ℝ)) - f∥ < ε :=
+begin
+  have w := mem_closure_iff_frequently.mp
+    (continuous_map_mem_subalgebra_closure_of_separates_points A w f),
+  rw metric.nhds_basis_ball.frequently_iff at w,
+  obtain ⟨g, H, m⟩ := w ε pos,
+  rw [metric.mem_ball, dist_eq_norm] at H,
+  exact ⟨⟨g, m⟩, H⟩,
+end
+theorem exists_mem_subalgebra_near_continuous_of_separates_points
+  (A : subalgebra ℝ C(X, ℝ)) (w : A.separates_points)
+  (f : X → ℝ) (c : continuous f) (ε : ℝ) (pos : 0 < ε) :
+  ∃ (g : A), ∀ x, ∥g x - f x∥ < ε :=
+begin
+  obtain ⟨g, b⟩ := exists_mem_subalgebra_near_continuous_map_of_separates_points A w ⟨f, c⟩ ε pos,
+  use g,
+  rwa norm_lt_iff _ pos at b,
+end
+end continuous_map
+section is_R_or_C
+open is_R_or_C
+def conj_invariant_subalgebra (A : subalgebra ℝ C(X, 𝕜)) : Prop :=
+A.map (conj_ae.to_alg_hom.comp_left_continuous ℝ conj_cle.continuous) ≤ A
+lemma mem_conj_invariant_subalgebra {A : subalgebra ℝ C(X, 𝕜)} (hA : conj_invariant_subalgebra A)
+  {f : C(X, 𝕜)} (hf : f ∈ A) :
+  (conj_ae.to_alg_hom.comp_left_continuous ℝ conj_cle.continuous) f ∈ A :=
+hA ⟨f, hf, rfl⟩
+end continuous_map
+open continuous_map
+lemma subalgebra.separates_points.is_R_or_C_to_real {A : subalgebra 𝕜 C(X, 𝕜)}
+  (hA : A.separates_points) (hA' : conj_invariant_subalgebra (A.restrict_scalars ℝ)) :
+  ((A.restrict_scalars ℝ).comap'
+    (of_real_am.comp_left_continuous ℝ continuous_of_real)).separates_points :=
+begin
+  intros x₁ x₂ hx,
+theorem continuous_map.subalgebra_is_R_or_C_topological_closure_eq_top_of_separates_points
+  (A : subalgebra 𝕜 C(X, 𝕜)) (hA : A.separates_points)
+  (hA' : conj_invariant_subalgebra (A.restrict_scalars ℝ)) :
+  A.topological_closure = ⊤ :=
+begin
+  rw algebra.eq_top_iff,

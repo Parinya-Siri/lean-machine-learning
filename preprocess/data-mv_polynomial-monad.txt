@@ -1,0 +1,31 @@
+import data.mv_polynomial.rename
+open_locale big_operators
+noncomputable theory
+namespace mv_polynomial
+open finsupp
+variables {σ : Type*} {τ : Type*}
+variables {R S T : Type*} [comm_semiring R] [comm_semiring S] [comm_semiring T]
+def bind₁ (f : σ → mv_polynomial τ R) : mv_polynomial σ R →ₐ[R] mv_polynomial τ R :=
+aeval f
+def bind₂ (f : R →+* mv_polynomial σ S) : mv_polynomial σ R →+* mv_polynomial σ S :=
+eval₂_hom f X
+def join₁ : mv_polynomial (mv_polynomial σ R) R →ₐ[R] mv_polynomial σ R :=
+aeval id
+def join₂ : mv_polynomial σ (mv_polynomial σ R) →+* mv_polynomial σ R :=
+eval₂_hom (ring_hom.id _) X
+@[simp] lemma aeval_eq_bind₁ (f : σ → mv_polynomial τ R) :
+  aeval f = bind₁ f := rfl
+@[simp] lemma eval₂_hom_C_eq_bind₁ (f : σ → mv_polynomial τ R) :
+  eval₂_hom C f = bind₁ f := rfl
+@[simp] lemma eval₂_hom_eq_bind₂ (f : R →+* mv_polynomial σ S) :
+  eval₂_hom f X = bind₂ f := rfl
+section
+variables (σ R)
+@[simp] lemma aeval_id_eq_join₁ :
+  aeval id = @join₁ σ R _ := rfl
+lemma eval₂_hom_C_id_eq_join₁ (φ : mv_polynomial (mv_polynomial σ R) R) :
+  eval₂_hom C id φ = join₁ φ := rfl
+@[simp] lemma eval₂_hom_id_X_eq_join₂ :
+  eval₂_hom (ring_hom.id _) X = @join₂ σ R _ := rfl
+end
+end mv_polynomial

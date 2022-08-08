@@ -1,0 +1,67 @@
+import ring_theory.graded_algebra.homogeneous_ideal
+open graded_ring direct_sum set_like finset
+open_locale big_operators
+variables {ι σ A : Type*}
+variables [comm_ring A]
+variables [linear_ordered_cancel_add_comm_monoid ι]
+variables [set_like σ A] [add_submonoid_class σ A] {𝒜 : ι → σ} [graded_ring 𝒜]
+include A
+lemma ideal.is_homogeneous.is_prime_of_homogeneous_mem_or_mem
+  {I : ideal A} (hI : I.is_homogeneous 𝒜) (I_ne_top : I ≠ ⊤)
+  (homogeneous_mem_or_mem : ∀ {x y : A},
+    is_homogeneous 𝒜 x → is_homogeneous 𝒜 y → (x * y ∈ I → x ∈ I ∨ y ∈ I)) :
+  ideal.is_prime I :=
+⟨I_ne_top, begin
+  intros x y hxy,
+  by_contradiction rid,
+  obtain ⟨rid₁, rid₂⟩ := not_or_distrib.mp rid,
+  classical,
+  set set₁ := (decompose 𝒜 x).support.filter (λ i, proj 𝒜 i x ∉ I) with set₁_eq,
+  set set₂ := (decompose 𝒜 y).support.filter (λ i, proj 𝒜 i y ∉ I) with set₂_eq,
+  have nonempty :
+    ∀ (x : A), (x ∉ I) → ((decompose 𝒜 x).support.filter (λ i, proj 𝒜 i x ∉ I)).nonempty,
+  { intros x hx,
+    rw filter_nonempty_iff,
+    contrapose! hx,
+    simp_rw proj_apply at hx,
+    rw ← sum_support_decompose 𝒜 x,
+    exact ideal.sum_mem _ hx, },
+  set max₁ := set₁.max' (nonempty x rid₁) with max₁_eq,
+  set max₂ := set₂.max' (nonempty y rid₂) with max₂_eq,
+  have mem_max₁ : max₁ ∈ set₁ := max'_mem set₁ (nonempty x rid₁),
+  have mem_max₂ : max₂ ∈ set₂ := max'_mem set₂ (nonempty y rid₂),
+  replace hxy : proj 𝒜 (max₁ + max₂) (x * y) ∈ I := hI _ hxy,
+  have mem_I : proj 𝒜 max₁ x * proj 𝒜 max₂ y ∈ I,
+  { set antidiag :=
+      ((decompose 𝒜 x).support.product (decompose 𝒜 y).support)
+        .filter (λ z : ι × ι, z.1 + z.2 = max₁ + max₂) with ha,
+    have mem_antidiag : (max₁, max₂) ∈ antidiag,
+    { simp only [add_sum_erase, mem_filter, mem_product],
+      exact ⟨⟨mem_of_mem_filter _ mem_max₁, mem_of_mem_filter _ mem_max₂⟩, rfl⟩ },
+    have eq_add_sum :=
+      calc  proj 𝒜 (max₁ + max₂) (x * y)
+          = ∑ ij in antidiag, proj 𝒜 ij.1 x * proj 𝒜 ij.2 y
+          : by simp_rw [ha, proj_apply, direct_sum.decompose_mul,
+                        direct_sum.coe_mul_apply 𝒜]
+      ... = proj 𝒜 max₁ x * proj 𝒜 max₂ y + ∑ ij in antidiag.erase (max₁, max₂),
+                                              proj 𝒜 ij.1 x * proj 𝒜 ij.2 y
+          : (add_sum_erase _ _ mem_antidiag).symm,
+    rw eq_sub_of_add_eq eq_add_sum.symm,
+    refine ideal.sub_mem _ hxy (ideal.sum_mem _ (λ z H, _)),
+    rcases z with ⟨i, j⟩,
+    simp only [mem_erase, prod.mk.inj_iff, ne.def, mem_filter, mem_product] at H,
+    rcases H with ⟨H₁, ⟨H₂, H₃⟩, H₄⟩,
+    have max_lt : max₁ < i ∨ max₂ < j,
+    { rcases lt_trichotomy max₁ i with h | rfl | h,
+      { exact or.inl h },
+      { refine false.elim (H₁ ⟨rfl, add_left_cancel H₄⟩), },
+      { apply or.inr,
+        have := add_lt_add_right h j,
+        rw H₄ at this,
+        exact lt_of_add_lt_add_left this, }, },
+    cases max_lt,
+def homogeneous_ideal.radical (I : homogeneous_ideal 𝒜) : homogeneous_ideal 𝒜 :=
+⟨I.to_ideal.radical, I.is_homogeneous.radical⟩
+@[simp]
+lemma homogeneous_ideal.coe_radical (I : homogeneous_ideal 𝒜) :
+  I.radical.to_ideal = I.to_ideal.radical := rfl

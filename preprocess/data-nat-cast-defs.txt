@@ -1,0 +1,58 @@
+import algebra.group.basic
+universes u
+set_option old_structure_cmd true
+protected def nat.unary_cast {R : Type u} [has_one R] [has_zero R] [has_add R] : ℕ → R
+| 0 := 0
+| (n + 1) := nat.unary_cast n + 1
+@[protect_proj]
+class has_nat_cast (R : Type u) :=
+(nat_cast : ℕ → R)
+@[protect_proj]
+class add_monoid_with_one (R : Type u) extends has_nat_cast R, add_monoid R, has_one R :=
+(nat_cast := nat.unary_cast)
+(nat_cast_zero : nat_cast 0 = (0 : R) . control_laws_tac)
+(nat_cast_succ : ∀ n, nat_cast (n + 1) = (nat_cast n + 1 : R) . control_laws_tac)
+protected def nat.cast {R : Type u} [has_nat_cast R] : ℕ → R := has_nat_cast.nat_cast
+@[protect_proj]
+class add_comm_monoid_with_one (R : Type*) extends add_monoid_with_one R, add_comm_monoid R
+section
+variables {R : Type*} [add_monoid_with_one R]
+library_note "coercion into rings"
+attribute [instance, priority 950] coe_base
+attribute [instance, priority 500] coe_trans
+namespace nat
+protected def bin_cast [has_zero R] [has_one R] [has_add R] (n : ℕ) : R :=
+@nat.binary_rec (λ _, R) 0 (λ odd k a, cond odd (a + a + 1) (a + a)) n
+@[simp] lemma bin_cast_eq [add_monoid_with_one R] (n : ℕ) : (nat.bin_cast n : R) = ((n : ℕ) : R) :=
+begin
+  rw nat.bin_cast,
+  apply binary_rec _ _ n,
+  { rw [binary_rec_zero, cast_zero] },
+  { intros b k h,
+    rw [binary_rec_eq, h],
+    { cases b; simp [bit, bit0, bit1] },
+    { simp } },
+end
+@[simp, norm_cast] theorem cast_bit0 [add_monoid_with_one R] (n : ℕ) :
+  ((bit0 n : ℕ) : R) = bit0 n := cast_add _ _
+@[simp, norm_cast] theorem cast_bit1 [add_monoid_with_one R] (n : ℕ) :
+  ((bit1 n : ℕ) : R) = bit1 n :=
+by rw [bit1, cast_add_one, cast_bit0]; refl
+lemma cast_two [add_monoid_with_one R] : ((2 : ℕ) : R) = 2 :=
+by rw [cast_add_one, cast_one, bit0]
+attribute [simp, norm_cast] int.nat_abs_of_nat
+end nat
+@[reducible] protected def add_monoid_with_one.unary {R : Type*} [add_monoid R] [has_one R] :
+  add_monoid_with_one R :=
+{ .. ‹has_one R›, .. ‹add_monoid R› }
+@[reducible] protected def add_monoid_with_one.binary {R : Type*} [add_monoid R] [has_one R] :
+  add_monoid_with_one R :=
+{ nat_cast := nat.bin_cast,
+  nat_cast_zero := by simp [nat.bin_cast, nat.cast],
+  nat_cast_succ := λ n, begin
+    simp only [nat.cast],
+    letI : add_monoid_with_one R := add_monoid_with_one.unary,
+    erw [nat.bin_cast_eq, nat.bin_cast_eq, nat.cast_succ],
+    refl,
+  end,
+  .. ‹has_one R›, .. ‹add_monoid R› }

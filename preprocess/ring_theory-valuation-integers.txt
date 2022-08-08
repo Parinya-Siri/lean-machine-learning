@@ -1,0 +1,22 @@
+import ring_theory.valuation.basic
+universes u v w
+namespace valuation
+section ring
+variables {R : Type u} {Γ₀ : Type v} [ring R] [linear_ordered_comm_group_with_zero Γ₀]
+variables (v : valuation R Γ₀)
+def integer : subring R :=
+{ carrier := { x | v x ≤ 1 },
+  one_mem' := le_of_eq v.map_one,
+  mul_mem' := λ x y hx hy, trans_rel_right (≤) (v.map_mul x y) (mul_le_one' hx hy),
+  zero_mem' := trans_rel_right (≤) v.map_zero zero_le_one,
+  add_mem' := λ x y hx hy, le_trans (v.map_add x y) (max_le hx hy),
+  neg_mem' := λ x hx, trans_rel_right (≤) (v.map_neg x) hx }
+end ring
+section comm_ring
+variables {R : Type u} {Γ₀ : Type v} [comm_ring R] [linear_ordered_comm_group_with_zero Γ₀]
+variables (v : valuation R Γ₀)
+variables (O : Type w) [comm_ring O] [algebra O R]
+structure integers : Prop :=
+(hom_inj : function.injective (algebra_map O R))
+(map_le_one : ∀ x, v (algebra_map O R x) ≤ 1)
+(exists_of_le_one : ∀ ⦃r⦄, v r ≤ 1 → ∃ x, algebra_map O R x = r)

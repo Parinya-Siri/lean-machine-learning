@@ -1,0 +1,30 @@
+import set_theory.ordinal.basic
+import topology.metric_space.emetric_space
+import topology.paracompact
+variable {α : Type*}
+open_locale ennreal topological_space
+open set
+namespace emetric
+  have pow_pos : ∀ k : ℕ, (0 : ℝ≥0∞) < 2⁻¹ ^ k,
+    from λ k, ennreal.pow_pos (ennreal.inv_pos.2 ennreal.two_ne_top) _,
+  have hpow_le : ∀ {m n : ℕ}, m ≤ n → (2⁻¹ : ℝ≥0∞) ^ n ≤ 2⁻¹ ^ m,
+    from λ m n h, ennreal.pow_le_pow_of_le_one (ennreal.inv_le_one.2 ennreal.one_lt_two.le) h,
+  have h2pow : ∀ n : ℕ, 2 * (2⁻¹ : ℝ≥0∞) ^ (n + 1) = 2⁻¹ ^ n,
+    by { intro n, simp [pow_succ, ← mul_assoc, ennreal.mul_inv_cancel] },
+  set D : ℕ → ι → set α :=
+    λ n, nat.strong_rec_on' n (λ n D' i,
+      ⋃ (x : α) (hxs : ind x = i) (hb : ball x (3 * 2⁻¹ ^ n) ⊆ s i)
+        (hlt : ∀ (m < n) (j : ι), x ∉ D' m ‹_› j), ball x (2⁻¹ ^ n)),
+  have Dn : ∀ n i, D n i = ⋃ (x : α) (hxs : ind x = i) (hb : ball x (3 * 2⁻¹ ^ n) ⊆ s i)
+    (hlt : ∀ (m < n) (j : ι), x ∉ D m j), ball x (2⁻¹ ^ n),
+    from λ n s, by { simp only [D], rw nat.strong_rec_on_beta' },
+  have memD : ∀ {n i y}, y ∈ D n i ↔ ∃ x (hi : ind x = i) (hb : ball x (3 * 2⁻¹ ^ n) ⊆ s i)
+    (hlt : ∀ (m < n) (j : ι), x ∉ D m j), edist y x < 2⁻¹ ^ n,
+  { intros n i y, rw [Dn n i], simp only [mem_Union, mem_ball] },
+    intro x,
+    rcases Dcov x with ⟨n, i, hn⟩,
+    have : D n i ∈ 𝓝 x, from is_open.mem_nhds (Dopen _ _) hn,
+    rcases (nhds_basis_uniformity uniformity_basis_edist_inv_two_pow).mem_iff.1 this
+      with ⟨k, -, hsub : ball x (2⁻¹ ^ k) ⊆ D n i⟩,
+    set B := ball x (2⁻¹ ^ (n + k + 1)),
+    refine ⟨B, ball_mem_nhds _ (pow_pos _), _⟩,

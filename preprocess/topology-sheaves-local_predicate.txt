@@ -1,0 +1,128 @@
+import topology.sheaves.sheaf_of_functions
+import topology.sheaves.stalks
+import topology.local_homeomorph
+import topology.sheaves.sheaf_condition.unique_gluing
+universe v
+noncomputable theory
+variables {X : Top.{v}}
+variables (T : X → Type v)
+open topological_space
+open opposite
+open category_theory
+open category_theory.limits
+open category_theory.limits.types
+namespace Top
+structure prelocal_predicate :=
+(pred : Π {U : opens X}, (Π x : U, T x) → Prop)
+(res : ∀ {U V : opens X} (i : U ⟶ V) (f : Π x : V, T x) (h : pred f), pred (λ x : U, f (i x)))
+variables (X)
+@[simps]
+def continuous_prelocal (T : Top.{v}) : prelocal_predicate (λ x : X, T) :=
+{ pred := λ U f, continuous f,
+  res := λ U V i f h, continuous.comp h (opens.open_embedding_of_le i.le).continuous, }
+instance inhabited_prelocal_predicate (T : Top.{v}) : inhabited (prelocal_predicate (λ x : X, T)) :=
+⟨continuous_prelocal X T⟩
+variables {X}
+structure local_predicate extends prelocal_predicate T :=
+(locality : ∀ {U : opens X} (f : Π x : U, T x)
+  (w : ∀ x : U, ∃ (V : opens X) (m : x.1 ∈ V) (i : V ⟶ U), pred (λ x : V, f (i x : U))), pred f)
+variables (X)
+def continuous_local (T : Top.{v}) : local_predicate (λ x : X, T) :=
+{ locality := λ U f w,
+   begin
+     apply continuous_iff_continuous_at.2,
+     intro x,
+     specialize w x,
+     rcases w with ⟨V, m, i, w⟩,
+     dsimp at w,
+     rw continuous_iff_continuous_at at w,
+     specialize w ⟨x, m⟩,
+     simpa using (opens.open_embedding_of_le i.le).continuous_at_iff.1 w,
+   end,
+  ..continuous_prelocal X T }
+instance inhabited_local_predicate (T : Top.{v}) : inhabited (local_predicate _) :=
+⟨continuous_local X T⟩
+variables {X T}
+def prelocal_predicate.sheafify {T : X → Type v} (P : prelocal_predicate T) : local_predicate T :=
+{ pred := λ U f, ∀ x : U, ∃ (V : opens X) (m : x.1 ∈ V) (i : V ⟶ U), P.pred (λ x : V, f (i x : U)),
+  res := λ V U i f w x,
+  begin
+    specialize w (i x),
+    rcases w with ⟨V', m', i', p⟩,
+    refine ⟨V ⊓ V', ⟨x.2,m'⟩, opens.inf_le_left _ _, _⟩,
+    convert P.res (opens.inf_le_right V V') _ p,
+  end,
+  locality := λ U f w x,
+  begin
+    specialize w x,
+    rcases w with ⟨V, m, i, p⟩,
+    specialize p ⟨x.1, m⟩,
+    rcases p with ⟨V', m', i', p'⟩,
+    exact ⟨V', m', i' ≫ i, p'⟩,
+  end }
+lemma prelocal_predicate.sheafify_of {T : X → Type v} {P : prelocal_predicate T}
+  {U : opens X} {f : Π x : U, T x} (h : P.pred f) :
+  P.sheafify.pred f :=
+λ x, ⟨U, x.2, 𝟙 _, by { convert h, ext ⟨y, w⟩, refl, }⟩
+@[simps]
+def subpresheaf_to_Types (P : prelocal_predicate T) : presheaf (Type v) X :=
+{ obj := λ U, { f : Π x : unop U, T x // P.pred f },
+  map := λ U V i f, ⟨λ x, f.1 (i.unop x), P.res i.unop f.1 f.2⟩ }.
+namespace subpresheaf_to_Types
+variables (P : prelocal_predicate T)
+def subtype : subpresheaf_to_Types P ⟶ presheaf_to_Types X T :=
+{ app := λ U f, f.1 }
+open Top.presheaf
+lemma is_sheaf (P : local_predicate T) :
+  (subpresheaf_to_Types P.to_prelocal_predicate).is_sheaf :=
+presheaf.is_sheaf_of_is_sheaf_unique_gluing_types _ $ λ ι U sf sf_comp, begin
+@[simps]
+def subsheaf_to_Types (P : local_predicate T) : sheaf (Type v) X :=
+⟨subpresheaf_to_Types P.to_prelocal_predicate, subpresheaf_to_Types.is_sheaf P⟩
+def stalk_to_fiber (P : local_predicate T) (x : X) :
+  (subsheaf_to_Types P).1.stalk x ⟶ T x :=
+begin
+  refine colimit.desc _
+    { X := T x, ι := { app := λ U f, _, naturality' := _ } },
+  { exact f.1 ⟨x, (unop U).2⟩, },
+  { tidy, }
+end
+@[simp] lemma stalk_to_fiber_germ (P : local_predicate T) (U : opens X) (x : U) (f) :
+  stalk_to_fiber P x ((subsheaf_to_Types P).1.germ x f) = f.1 x :=
+begin
+  dsimp [presheaf.germ, stalk_to_fiber],
+  cases x,
+  simp,
+  refl,
+end
+lemma stalk_to_fiber_surjective (P : local_predicate T) (x : X)
+  (w : ∀ (t : T x), ∃ (U : open_nhds x) (f : Π y : U.1, T y) (h : P.pred f), f ⟨x, U.2⟩ = t) :
+  function.surjective (stalk_to_fiber P x) :=
+λ t,
+begin
+  rcases w t with ⟨U, f, h, rfl⟩,
+  fsplit,
+  { exact (subsheaf_to_Types P).1.germ ⟨x, U.2⟩ ⟨f, h⟩, },
+  { exact stalk_to_fiber_germ _ U.1 ⟨x, U.2⟩ ⟨f, h⟩, }
+end
+lemma stalk_to_fiber_injective (P : local_predicate T) (x : X)
+  (w : ∀ (U V : open_nhds x) (fU : Π y : U.1, T y) (hU : P.pred fU)
+    (fV : Π y : V.1, T y) (hV : P.pred fV) (e : fU ⟨x, U.2⟩ = fV ⟨x, V.2⟩),
+    ∃ (W : open_nhds x) (iU : W ⟶ U) (iV : W ⟶ V), ∀ (w : W.1), fU (iU w : U.1) = fV (iV w : V.1)) :
+  function.injective (stalk_to_fiber P x) :=
+λ tU tV h,
+begin
+def subpresheaf_continuous_prelocal_iso_presheaf_to_Top (T : Top.{v}) :
+  subpresheaf_to_Types (continuous_prelocal X T) ≅ presheaf_to_Top X T :=
+nat_iso.of_components
+  (λ X,
+  { hom := by { rintro ⟨f, c⟩, exact ⟨f, c⟩, },
+    inv := by { rintro ⟨f, c⟩, exact ⟨f, c⟩, },
+    hom_inv_id' := by { ext ⟨f, p⟩ x, refl, },
+    inv_hom_id' := by { ext ⟨f, p⟩ x, refl, }, })
+  (by tidy)
+def sheaf_to_Top (T : Top.{v}) : sheaf (Type v) X :=
+⟨presheaf_to_Top X T,
+  presheaf.is_sheaf_of_iso (subpresheaf_continuous_prelocal_iso_presheaf_to_Top T)
+    (subpresheaf_to_Types.is_sheaf (continuous_local X T))⟩
+end Top

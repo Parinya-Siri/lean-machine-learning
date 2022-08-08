@@ -1,0 +1,180 @@
+import algebra.big_operators.order
+import data.nat.totient
+import group_theory.order_of_element
+import tactic.group
+import group_theory.exponent
+universe u
+variables {α : Type u} {a : α}
+section cyclic
+open_locale big_operators
+local attribute [instance] set_fintype
+open subgroup
+class is_add_cyclic (α : Type u) [add_group α] : Prop :=
+(exists_generator [] : ∃ g : α, ∀ x, x ∈ add_subgroup.zmultiples g)
+@[to_additive is_add_cyclic] class is_cyclic (α : Type u) [group α] : Prop :=
+(exists_generator [] : ∃ g : α, ∀ x, x ∈ zpowers g)
+@[priority 100, to_additive is_add_cyclic_of_subsingleton]
+instance is_cyclic_of_subsingleton [group α] [subsingleton α] : is_cyclic α :=
+⟨⟨1, λ x, by { rw subsingleton.elim x 1, exact mem_zpowers 1 }⟩⟩
+@[to_additive "A cyclic group is always commutative. This is not an `instance` because often we have
+  a better proof of `add_comm_group`."]
+def is_cyclic.comm_group [hg : group α] [is_cyclic α] : comm_group α :=
+{ mul_comm := λ x y,
+    let ⟨g, hg⟩ := is_cyclic.exists_generator α,
+        ⟨n, hn⟩ := hg x,
+        ⟨m, hm⟩ := hg y in
+    hm ▸ hn ▸ zpow_mul_comm _ _ _,
+  ..hg }
+variables [group α]
+@[to_additive monoid_add_hom.map_add_cyclic]
+lemma monoid_hom.map_cyclic {G : Type*} [group G] [h : is_cyclic G] (σ : G →* G) :
+  ∃ m : ℤ, ∀ g : G, σ g = g ^ m :=
+begin
+  obtain ⟨h, hG⟩ := is_cyclic.exists_generator G,
+  obtain ⟨m, hm⟩ := hG (σ h),
+  refine ⟨m, λ g, _⟩,
+  obtain ⟨n, rfl⟩ := hG g,
+  rw [monoid_hom.map_zpow, ←hm, ←zpow_mul, ←zpow_mul'],
+end
+@[to_additive is_add_cyclic_of_order_of_eq_card]
+lemma is_cyclic_of_order_of_eq_card [fintype α]  (x : α)
+   (hx : order_of x = fintype.card α) : is_cyclic α :=
+begin
+  classical,
+  use x,
+  simp_rw [← set_like.mem_coe, ← set.eq_univ_iff_forall],
+  rw [←fintype.card_congr (equiv.set.univ α), order_eq_card_zpowers] at hx,
+  exact set.eq_of_subset_of_card_le (set.subset_univ _) (ge_of_eq hx),
+end
+@[to_additive is_add_cyclic_of_prime_card]
+lemma is_cyclic_of_prime_card {α : Type u} [group α] [fintype α] {p : ℕ} [hp : fact p.prime]
+  (h : fintype.card α = p) : is_cyclic α :=
+⟨begin
+  obtain ⟨g, hg⟩ : ∃ g : α, g ≠ 1 := fintype.exists_ne_of_one_lt_card (h.symm ▸ hp.1.one_lt) 1,
+@[to_additive]
+lemma is_simple_group_of_prime_card {α : Type u} [group α] [fintype α] {p : ℕ} [hp : fact p.prime]
+  (h : fintype.card α = p) : is_simple_group α :=
+⟨begin
+  have h' := nat.prime.one_lt (fact.out p.prime),
+  rw ← h at h',
+  haveI := fintype.one_lt_card_iff_nontrivial.1 h',
+  apply exists_pair_ne α,
+end, λ H Hn, begin
+  classical,
+  have hcard := card_subgroup_dvd_card H,
+  rw [h, dvd_prime (fact.out p.prime)] at hcard,
+  refine hcard.imp (λ h1, _) (λ hp, _),
+  { haveI := fintype.card_le_one_iff_subsingleton.1 (le_of_eq h1),
+    apply eq_bot_of_subsingleton },
+  { exact eq_top_of_card_eq _ (hp.trans h.symm) }
+end⟩
+end cyclic
+section quotient_center
+open subgroup
+variables {G : Type*} {H : Type*} [group G] [group H]
+@[to_additive commutative_of_add_cyclic_center_quotient "A group is commutative if the quotient by
+  the center is cyclic. Also see `add_comm_group_of_cycle_center_quotient`
+  for the `add_comm_group` instance."]
+lemma commutative_of_cyclic_center_quotient [is_cyclic H] (f : G →* H)
+  (hf : f.ker ≤ center G) (a b : G) : a * b = b * a :=
+let ⟨⟨x, y, (hxy : f y = x)⟩, (hx : ∀ a : f.range, a ∈ zpowers _)⟩ :=
+  is_cyclic.exists_generator f.range in
+let ⟨m, hm⟩ := hx ⟨f a, a, rfl⟩ in
+let ⟨n, hn⟩ := hx ⟨f b, b, rfl⟩ in
+have hm : x ^ m = f a, by simpa [subtype.ext_iff] using hm,
+have hn : x ^ n = f b, by simpa [subtype.ext_iff] using hn,
+have ha : y ^ (-m) * a ∈ center G,
+  from hf (by rw [f.mem_ker, f.map_mul, f.map_zpow, hxy, zpow_neg, hm, inv_mul_self]),
+have hb : y ^ (-n) * b ∈ center G,
+  from hf (by rw [f.mem_ker, f.map_mul, f.map_zpow, hxy, zpow_neg, hn, inv_mul_self]),
+calc a * b = y ^ m * ((y ^ (-m) * a) * y ^ n) * (y ^ (-n) * b) : by simp [mul_assoc]
+... = y ^ m * (y ^ n * (y ^ (-m) * a)) * (y ^ (-n) * b) : by rw [mem_center_iff.1 ha]
+... = y ^ m * y ^ n * y ^ (-m) * (a * (y ^ (-n) * b)) : by simp [mul_assoc]
+... = y ^ m * y ^ n * y ^ (-m) * ((y ^ (-n) * b) * a) : by rw [mem_center_iff.1 hb]
+... = b * a : by group
+@[to_additive commutative_of_add_cycle_center_quotient "A group is commutative if the quotient by
+  the center is cyclic."]
+def comm_group_of_cycle_center_quotient [is_cyclic H] (f : G →* H)
+  (hf : f.ker ≤ center G) : comm_group G :=
+{ mul_comm := commutative_of_cyclic_center_quotient f hf,
+  ..show group G, by apply_instance }
+end quotient_center
+namespace is_simple_group
+section comm_group
+variables [comm_group α] [is_simple_group α]
+@[priority 100, to_additive is_simple_add_group.is_add_cyclic]
+instance : is_cyclic α :=
+begin
+  cases subsingleton_or_nontrivial α with hi hi; haveI := hi,
+  { apply is_cyclic_of_subsingleton },
+  { obtain ⟨g, hg⟩ := exists_ne (1 : α),
+    refine ⟨⟨g, λ x, _⟩⟩,
+    cases is_simple_order.eq_bot_or_eq_top (subgroup.zpowers g) with hb ht,
+    { exfalso,
+      apply hg,
+      rw [← subgroup.mem_bot, ← hb],
+      apply subgroup.mem_zpowers },
+    { rw ht,
+      apply subgroup.mem_top } }
+end
+@[to_additive]
+theorem prime_card [fintype α] : (fintype.card α).prime :=
+begin
+  have h0 : 0 < fintype.card α := fintype.card_pos_iff.2 (by apply_instance),
+  obtain ⟨g, hg⟩ := is_cyclic.exists_generator α,
+  rw nat.prime_def_lt'',
+  refine ⟨fintype.one_lt_card_iff_nontrivial.2 infer_instance, λ n hn, _⟩,
+  refine (is_simple_order.eq_bot_or_eq_top (subgroup.zpowers (g ^ n))).symm.imp _ _,
+  { intro h,
+    have hgo := order_of_pow g,
+    rw [order_of_eq_card_of_forall_mem_zpowers hg, nat.gcd_eq_right_iff_dvd.1 hn,
+      order_of_eq_card_of_forall_mem_zpowers, eq_comm,
+      nat.div_eq_iff_eq_mul_left (nat.pos_of_dvd_of_pos hn h0) hn] at hgo,
+    { exact (mul_left_cancel₀ (ne_of_gt h0) ((mul_one (fintype.card α)).trans hgo)).symm },
+    { intro x,
+      rw h,
+      exact subgroup.mem_top _ } },
+  { intro h,
+    apply le_antisymm (nat.le_of_dvd h0 hn),
+    rw ← order_of_eq_card_of_forall_mem_zpowers hg,
+    apply order_of_le_of_pow_eq_one (nat.pos_of_dvd_of_pos hn h0),
+    rw [← subgroup.mem_bot, ← h],
+    exact subgroup.mem_zpowers _ }
+end
+end comm_group
+end is_simple_group
+@[to_additive add_comm_group.is_simple_iff_is_add_cyclic_and_prime_card]
+theorem comm_group.is_simple_iff_is_cyclic_and_prime_card [fintype α] [comm_group α] :
+  is_simple_group α ↔ is_cyclic α ∧ (fintype.card α).prime :=
+begin
+  split,
+  { introI h,
+    exact ⟨is_simple_group.is_cyclic, is_simple_group.prime_card⟩ },
+  { rintro ⟨hc, hp⟩,
+    haveI : fact (fintype.card α).prime := ⟨hp⟩,
+    exact is_simple_group_of_prime_card rfl }
+end
+section exponent
+open monoid
+@[to_additive] lemma is_cyclic.exponent_eq_card [group α] [is_cyclic α] [fintype α] :
+  exponent α = fintype.card α :=
+begin
+  obtain ⟨g, hg⟩ := is_cyclic.exists_generator α,
+  apply nat.dvd_antisymm,
+  { rw [←lcm_order_eq_exponent, finset.lcm_dvd_iff],
+    exact λ b _, order_of_dvd_card_univ },
+  rw ←order_of_eq_card_of_forall_mem_zpowers hg,
+  exact order_dvd_exponent _
+end
+@[to_additive] lemma is_cyclic.of_exponent_eq_card [comm_group α] [fintype α]
+  (h : exponent α = fintype.card α) : is_cyclic α :=
+let ⟨g, _, hg⟩ := finset.mem_image.mp (finset.max'_mem _ _) in
+is_cyclic_of_order_of_eq_card g $ hg.trans $ exponent_eq_max'_order_of.symm.trans h
+@[to_additive] lemma is_cyclic.iff_exponent_eq_card [comm_group α] [fintype α] :
+  is_cyclic α ↔ exponent α = fintype.card α :=
+⟨λ h, by exactI is_cyclic.exponent_eq_card, is_cyclic.of_exponent_eq_card⟩
+@[to_additive] lemma is_cyclic.exponent_eq_zero_of_infinite [group α] [is_cyclic α] [infinite α] :
+  exponent α = 0 :=
+let ⟨g, hg⟩ := is_cyclic.exists_generator α in
+exponent_eq_zero_of_order_zero $ infinite.order_of_eq_zero_of_forall_mem_zpowers hg
+end exponent

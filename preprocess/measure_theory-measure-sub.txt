@@ -1,0 +1,19 @@
+import measure_theory.measure.measure_space
+open set
+namespace measure_theory
+namespace measure
+noncomputable instance has_sub {α : Type*} [measurable_space α] : has_sub (measure α) :=
+⟨λ μ ν, Inf {τ | μ ≤ τ + ν} ⟩
+variables {α : Type*} {m : measurable_space α} {μ ν : measure α} {s : set α}
+lemma sub_def : μ - ν = Inf {d | μ ≤ d + ν} := rfl
+lemma sub_le_of_le_add {d} (h : μ ≤ d + ν) : μ - ν ≤ d := Inf_le h
+lemma sub_eq_zero_of_le (h : μ ≤ ν) : μ - ν = 0 :=
+nonpos_iff_eq_zero'.1 $ sub_le_of_le_add $ by rwa zero_add
+lemma sub_le : μ - ν ≤ μ :=
+sub_le_of_le_add $ measure.le_add_right le_rfl
+@[simp] lemma sub_top : μ - ⊤ = 0 := sub_eq_zero_of_le le_top
+@[simp] lemma zero_sub : 0 - μ = 0 := sub_eq_zero_of_le μ.zero_le
+@[simp] lemma sub_self : μ - μ = 0 := sub_eq_zero_of_le le_rfl
+lemma sub_apply [is_finite_measure ν] (h₁ : measurable_set s) (h₂ : ν ≤ μ) :
+  (μ - ν) s = μ s - ν s :=
+begin

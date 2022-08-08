@@ -1,0 +1,123 @@
+import analysis.specific_limits.basic
+import topology.metric_space.hausdorff_distance
+import topology.sets.compacts
+noncomputable theory
+open_locale classical topological_space ennreal
+universe u
+open classical set function topological_space filter
+namespace emetric
+section
+variables {α : Type u} [emetric_space α] {s : set α}
+instance closeds.emetric_space : emetric_space (closeds α) :=
+{ edist               := λs t, Hausdorff_edist (s : set α) t,
+  edist_self          := λs, Hausdorff_edist_self,
+  edist_comm          := λs t, Hausdorff_edist_comm,
+  edist_triangle      := λs t u, Hausdorff_edist_triangle,
+  eq_of_edist_eq_zero :=
+    λ s t h, closeds.ext $ (Hausdorff_edist_zero_iff_eq_of_closed s.closed t.closed).1 h }
+lemma continuous_inf_edist_Hausdorff_edist :
+  continuous (λ p : α × (closeds α), inf_edist p.1 p.2) :=
+begin
+  refine continuous_of_le_add_edist 2 (by simp) _,
+  rintros ⟨x, s⟩ ⟨y, t⟩,
+  calc inf_edist x s ≤ inf_edist x t + Hausdorff_edist (t : set α) s :
+    inf_edist_le_inf_edist_add_Hausdorff_edist
+  ... ≤ inf_edist y t + edist x y + Hausdorff_edist (t : set α) s :
+    add_le_add_right inf_edist_le_inf_edist_add_edist _
+  ... = inf_edist y t + (edist x y + Hausdorff_edist (s : set α) t)
+      : by rw [add_assoc, Hausdorff_edist_comm]
+  ... ≤ inf_edist y t + (edist (x, s) (y, t) + edist (x, s) (y, t)) :
+    add_le_add_left (add_le_add (le_max_left _ _) (le_max_right _ _)) _
+  ... = inf_edist y t + 2 * edist (x, s) (y, t) :
+    by rw [← mul_two, mul_comm]
+end
+lemma is_closed_subsets_of_is_closed (hs : is_closed s) :
+  is_closed {t : closeds α | (t : set α) ⊆ s} :=
+begin
+  refine is_closed_of_closure_subset (λt ht x hx, _),
+lemma closeds.edist_eq {s t : closeds α} : edist s t = Hausdorff_edist (s : set α) t := rfl
+instance closeds.complete_space [complete_space α] : complete_space (closeds α) :=
+begin
+  let B : ℕ → ℝ≥0∞ := λ n, (2⁻¹)^n,
+  have B_pos : ∀ n, (0:ℝ≥0∞) < B n,
+    by simp [B, ennreal.pow_pos],
+  have B_ne_top : ∀ n, B n ≠ ⊤,
+    by simp [B, ennreal.pow_ne_top],
+  refine complete_of_convergent_controlled_sequences B B_pos (λs hs, _),
+  let t0 := ⋂ n, closure (⋃ m ≥ n, s m : set α),
+  let t : closeds α := ⟨t0, is_closed_Inter (λ_, is_closed_closure)⟩,
+  use t,
+    assume n x hx,
+    obtain ⟨z, hz₀, hz⟩ : ∃ z : Π l, s (n + l), (z 0 : α) = x ∧
+      ∀ k, edist (z k:α) (z (k+1):α) ≤ B n / 2^k,
+    assume n x xt0,
+    have : x ∈ closure (⋃ m ≥ n, s m : set α), by apply mem_Inter.1 xt0 n,
+    rcases mem_closure_iff.1 this (B n) (B_pos n) with ⟨z, hz, Dxz⟩,
+instance closeds.compact_space [compact_space α] : compact_space (closeds α) :=
+⟨begin
+  refine compact_of_totally_bounded_is_closed (emetric.totally_bounded_iff.2 (λε εpos, _))
+    is_closed_univ,
+  rcases exists_between εpos with ⟨δ, δpos, δlt⟩,
+  rcases emetric.totally_bounded_iff.1
+    (compact_iff_totally_bounded_complete.1 (@compact_univ α _ _)).1 δ δpos with ⟨s, fs, hs⟩,
+instance nonempty_compacts.emetric_space : emetric_space (nonempty_compacts α) :=
+{ edist               := λ s t, Hausdorff_edist (s : set α) t,
+  edist_self          := λs, Hausdorff_edist_self,
+  edist_comm          := λs t, Hausdorff_edist_comm,
+  edist_triangle      := λs t u, Hausdorff_edist_triangle,
+  eq_of_edist_eq_zero := λ s t h, nonempty_compacts.ext $ begin
+    have : closure (s : set α) = closure t := Hausdorff_edist_zero_iff_closure_eq_closure.1 h,
+    rwa [s.compact.is_closed.closure_eq, t.compact.is_closed.closure_eq] at this,
+  end }
+lemma nonempty_compacts.to_closeds.uniform_embedding :
+  uniform_embedding (@nonempty_compacts.to_closeds α _ _) :=
+isometry.uniform_embedding $ λx y, rfl
+lemma nonempty_compacts.is_closed_in_closeds [complete_space α] :
+  is_closed (range $ @nonempty_compacts.to_closeds α _ _) :=
+begin
+  have : range nonempty_compacts.to_closeds =
+    {s : closeds α | (s : set α).nonempty ∧ is_compact (s : set α) },
+  { ext s,
+    refine ⟨_, λ h, ⟨⟨⟨s, h.2⟩, h.1⟩, closeds.ext rfl⟩⟩,
+    rintro ⟨s, hs, rfl⟩,
+    exact ⟨s.nonempty, s.compact⟩ },
+  rw this,
+  refine is_closed_of_closure_subset (λs hs, ⟨_, _⟩),
+instance nonempty_compacts.complete_space [complete_space α] :
+  complete_space (nonempty_compacts α) :=
+(complete_space_iff_is_complete_range
+  nonempty_compacts.to_closeds.uniform_embedding.to_uniform_inducing).2 $
+  nonempty_compacts.is_closed_in_closeds.is_complete
+instance nonempty_compacts.compact_space [compact_space α] : compact_space (nonempty_compacts α) :=
+⟨begin
+  rw nonempty_compacts.to_closeds.uniform_embedding.embedding.is_compact_iff_is_compact_image,
+  rw [image_univ],
+  exact nonempty_compacts.is_closed_in_closeds.is_compact
+end⟩
+instance nonempty_compacts.second_countable_topology [second_countable_topology α] :
+  second_countable_topology (nonempty_compacts α) :=
+begin
+  haveI : separable_space (nonempty_compacts α) :=
+  begin
+    rcases exists_countable_dense α with ⟨s, cs, s_dense⟩,
+    let v0 := {t : set α | t.finite ∧ t ⊆ s},
+    let v : set (nonempty_compacts α) := {t : nonempty_compacts α | (t : set α) ∈ v0},
+    refine  ⟨⟨v, _, _⟩⟩,
+    { have : v0.countable, from countable_set_of_finite_subset cs,
+      exact this.preimage set_like.coe_injective },
+    { refine λt, mem_closure_iff.2 (λε εpos, _),
+instance nonempty_compacts.metric_space : metric_space (nonempty_compacts α) :=
+emetric_space.to_metric_space $ λ x y, Hausdorff_edist_ne_top_of_nonempty_of_bounded
+  x.nonempty y.nonempty x.compact.bounded y.compact.bounded
+lemma nonempty_compacts.dist_eq {x y : nonempty_compacts α} :
+  dist x y = Hausdorff_dist (x : set α) y := rfl
+lemma lipschitz_inf_dist_set (x : α) : lipschitz_with 1 (λ s : nonempty_compacts α, inf_dist x s) :=
+lipschitz_with.of_le_add $ assume s t,
+by { rw dist_comm,
+  exact inf_dist_le_inf_dist_add_Hausdorff_dist (edist_ne_top t s) }
+lemma lipschitz_inf_dist : lipschitz_with 2 (λ p : α × (nonempty_compacts α), inf_dist p.1 p.2) :=
+@lipschitz_with.uncurry _ _ _ _ _ _ (λ (x : α) (s : nonempty_compacts α), inf_dist x s) 1 1
+  (λ s, lipschitz_inf_dist_pt s) lipschitz_inf_dist_set
+lemma uniform_continuous_inf_dist_Hausdorff_dist :
+  uniform_continuous (λ p : α × (nonempty_compacts α), inf_dist p.1 p.2) :=
+lipschitz_inf_dist.uniform_continuous

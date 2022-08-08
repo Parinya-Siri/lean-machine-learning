@@ -1,0 +1,17 @@
+import algebra.category.Module.epi_mono
+import linear_algebra.pi
+open category_theory
+open category_theory.limits
+universes u v w
+namespace Module
+variables {R : Type u} [ring R]
+variables {ι : Type v} (Z : ι → Module.{max v w} R)
+def product_cone : fan Z :=
+fan.mk (Module.of R (Π i : ι, Z i)) (λ i, (linear_map.proj i : (Π i : ι, Z i) →ₗ[R] Z i))
+def product_cone_is_limit : is_limit (product_cone Z) :=
+{ lift := λ s, (linear_map.pi (λ j, s.π.app ⟨j⟩) : s.X →ₗ[R] (Π i : ι, Z i)),
+  fac' := λ s j, by { cases j, tidy, },
+  uniq' := λ s m w, by { ext x i, exact linear_map.congr_fun (w ⟨i⟩) x, }, }
+noncomputable def pi_iso_pi :
+  ∏ Z ≅ Module.of R (Π i, Z i) :=
+limit.iso_limit_cone ⟨_, product_cone_is_limit Z⟩

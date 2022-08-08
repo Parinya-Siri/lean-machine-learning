@@ -1,0 +1,48 @@
+import linear_algebra.affine_space.affine_map
+import topology.algebra.group
+import topology.algebra.mul_action
+namespace affine_map
+variables {R E F : Type*}
+variables [add_comm_group E] [topological_space E]
+variables [add_comm_group F] [topological_space F] [topological_add_group F]
+section ring
+variables [ring R] [module R E] [module R F]
+lemma continuous_iff {f : E →ᵃ[R] F} :
+  continuous f ↔ continuous f.linear :=
+begin
+  split,
+  { intro hc,
+    rw decomp' f,
+    have := hc.sub continuous_const,
+    exact this, },
+  { intro hc,
+    rw decomp f,
+    have := hc.add continuous_const,
+    exact this }
+end
+@[continuity]
+lemma line_map_continuous [topological_space R] [has_continuous_smul R F] {p v : F} :
+  continuous ⇑(line_map p v : R →ᵃ[R] F) :=
+continuous_iff.mpr $ (continuous_id.smul continuous_const).add $
+  @continuous_const _ _ _ _ (0 : F)
+end ring
+section comm_ring
+variables [comm_ring R] [module R F] [has_continuous_const_smul R F]
+@[continuity]
+lemma homothety_continuous (x : F) (t : R) : continuous $ homothety x t :=
+begin
+  suffices : ⇑(homothety x t) = λ y, t • (y - x) + x, { rw this, continuity, },
+  ext y,
+  simp [homothety_apply],
+end
+end comm_ring
+section field
+variables [field R] [module R F] [has_continuous_const_smul R F]
+lemma homothety_is_open_map (x : F) (t : R) (ht : t ≠ 0) : is_open_map $ homothety x t :=
+begin
+  apply is_open_map.of_inverse (homothety_continuous x t⁻¹);
+  intros e;
+  simp [← affine_map.comp_apply, ← homothety_mul, ht],
+end
+end field
+end affine_map

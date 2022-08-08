@@ -1,0 +1,5 @@
+import data.nat.parity
+namespace int
+variables {m n : ℤ}
+@[simp] theorem mod_two_ne_one : ¬ n % 2 = 1 ↔ n % 2 = 0 :=
+by cases mod_two_eq_zero_or_one n with h h; simp [h]

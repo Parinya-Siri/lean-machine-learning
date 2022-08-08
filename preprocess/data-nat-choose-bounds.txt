@@ -1,0 +1,15 @@
+import algebra.group_power.lemmas
+import algebra.order.field
+import data.nat.cast
+import data.nat.choose.basic
+open_locale nat
+variables {α : Type*} [linear_ordered_field α]
+namespace nat
+lemma choose_le_pow (r n : ℕ) : (n.choose r : α) ≤ n^r / r! :=
+begin
+  rw le_div_iff',
+  { norm_cast,
+    rw ←nat.desc_factorial_eq_factorial_mul_choose,
+    exact n.desc_factorial_le_pow r },
+  exact_mod_cast r.factorial_pos,
+end

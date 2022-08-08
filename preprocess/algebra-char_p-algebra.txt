@@ -1,0 +1,44 @@
+import algebra.char_p.basic
+import ring_theory.localization.fraction_ring
+import algebra.free_algebra
+lemma char_p_of_injective_algebra_map {R A : Type*} [comm_semiring R] [semiring A] [algebra R A]
+  (h : function.injective (algebra_map R A)) (p : ℕ) [char_p R p] : char_p A p :=
+{ cast_eq_zero_iff := λx,
+  begin
+    rw ←char_p.cast_eq_zero_iff R p x,
+    change algebra_map ℕ A x = 0 ↔ algebra_map ℕ R x = 0,
+    rw is_scalar_tower.algebra_map_apply ℕ R A x,
+    refine iff.trans _ h.eq_iff,
+    rw ring_hom.map_zero,
+  end }
+lemma char_p_of_injective_algebra_map' (R A : Type*) [field R] [semiring A] [algebra R A]
+  [nontrivial A] (p : ℕ) [char_p R p] : char_p A p :=
+char_p_of_injective_algebra_map (algebra_map R A).injective p
+lemma char_zero_of_injective_algebra_map {R A : Type*} [comm_semiring R] [semiring A] [algebra R A]
+  (h : function.injective (algebra_map R A)) [char_zero R] : char_zero A :=
+{ cast_injective := λ x y hxy,
+  begin
+    change algebra_map ℕ A x = algebra_map ℕ A y at hxy,
+    rw is_scalar_tower.algebra_map_apply ℕ R A x at hxy,
+    rw is_scalar_tower.algebra_map_apply ℕ R A y at hxy,
+    exact char_zero.cast_injective (h hxy),
+  end }
+instance char_p [char_p R p] : char_p (free_algebra R X) p :=
+char_p_of_injective_algebra_map free_algebra.algebra_map_left_inverse.injective p
+instance char_zero [char_zero R] : char_zero (free_algebra R X) :=
+char_zero_of_injective_algebra_map free_algebra.algebra_map_left_inverse.injective
+end free_algebra
+namespace is_fraction_ring
+variables (R : Type*) {K : Type*} [comm_ring R]
+  [field K] [algebra R K] [is_fraction_ring R K]
+variables (p : ℕ)
+lemma char_p_of_is_fraction_ring [char_p R p] : char_p K p :=
+char_p_of_injective_algebra_map (is_fraction_ring.injective R K) p
+lemma char_zero_of_is_fraction_ring [char_zero R] : char_zero K :=
+@char_p.char_p_to_char_zero K _ (char_p_of_is_fraction_ring R 0)
+variables [is_domain R]
+instance char_p [char_p R p] : char_p (fraction_ring R) p :=
+char_p_of_is_fraction_ring R p
+instance char_zero [char_zero R] : char_zero (fraction_ring R) :=
+char_zero_of_is_fraction_ring R
+end is_fraction_ring

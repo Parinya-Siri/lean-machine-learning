@@ -1,0 +1,128 @@
+import data.seq.seq
+import algebra.field.basic
+@[derive inhabited]
+protected structure generalized_continued_fraction.pair := (a : α) (b : α)
+open generalized_continued_fraction
+namespace generalized_continued_fraction.pair
+variable {α}
+instance [has_repr α] : has_repr (pair α) :=
+⟨λ p, "(a : " ++ (repr p.a) ++ ", b : " ++ (repr p.b) ++ ")"⟩
+def map {β : Type*} (f : α → β) (gp : pair α) : pair β :=
+⟨f gp.a, f gp.b⟩
+section coe
+variables {β : Type*} [has_coe α β]
+instance has_coe_to_generalized_continued_fraction_pair : has_coe (pair α) (pair β) :=
+⟨map coe⟩
+@[simp, norm_cast]
+lemma coe_to_generalized_continued_fraction_pair {a b : α} :
+  (↑(pair.mk a b) : pair β) = pair.mk (a : β) (b : β) := rfl
+end coe
+end generalized_continued_fraction.pair
+variable (α)
+structure generalized_continued_fraction :=
+(h : α) (s : seq $ pair α)
+variable {α}
+namespace generalized_continued_fraction
+def of_integer (a : α) : generalized_continued_fraction α :=
+⟨a, seq.nil⟩
+instance [inhabited α] : inhabited (generalized_continued_fraction α) := ⟨of_integer default⟩
+def partial_numerators (g : generalized_continued_fraction α) : seq α :=
+g.s.map pair.a
+def partial_denominators (g : generalized_continued_fraction α) : seq α :=
+g.s.map pair.b
+def terminated_at (g : generalized_continued_fraction α) (n : ℕ) : Prop := g.s.terminated_at n
+instance terminated_at_decidable (g : generalized_continued_fraction α) (n : ℕ) :
+  decidable (g.terminated_at n) :=
+by { unfold terminated_at, apply_instance }
+def terminates (g : generalized_continued_fraction α) : Prop := g.s.terminates
+section coe
+variables {β : Type*} [has_coe α β]
+instance has_coe_to_generalized_continued_fraction :
+  has_coe (generalized_continued_fraction α) (generalized_continued_fraction β) :=
+⟨λ g, ⟨(g.h : β), (g.s.map coe : seq $ pair β)⟩⟩
+@[simp, norm_cast]
+lemma coe_to_generalized_continued_fraction {g : generalized_continued_fraction α} :
+  (↑(g : generalized_continued_fraction α) : generalized_continued_fraction β) =
+    ⟨(g.h : β), (g.s.map coe : seq $ pair β)⟩ :=
+rfl
+end coe
+end generalized_continued_fraction
+def generalized_continued_fraction.is_simple_continued_fraction
+  (g : generalized_continued_fraction α) [has_one α] : Prop :=
+∀ (n : ℕ) (aₙ : α), g.partial_numerators.nth n = some aₙ → aₙ = 1
+variable (α)
+def simple_continued_fraction [has_one α] :=
+{g : generalized_continued_fraction α // g.is_simple_continued_fraction}
+variable {α}
+namespace simple_continued_fraction
+variable [has_one α]
+def of_integer (a : α) : simple_continued_fraction α :=
+⟨generalized_continued_fraction.of_integer a, λ n aₙ h, by cases h⟩
+instance : inhabited (simple_continued_fraction α) := ⟨of_integer 1⟩
+instance has_coe_to_generalized_continued_fraction :
+  has_coe (simple_continued_fraction α) (generalized_continued_fraction α) :=
+by {unfold simple_continued_fraction, apply_instance}
+lemma coe_to_generalized_continued_fraction {s : simple_continued_fraction α} :
+  (↑s : generalized_continued_fraction α) = s.val := rfl
+end simple_continued_fraction
+def simple_continued_fraction.is_continued_fraction [has_one α] [has_zero α] [has_lt α]
+  (s : simple_continued_fraction α) : Prop :=
+∀ (n : ℕ) (bₙ : α),
+  (↑s : generalized_continued_fraction α).partial_denominators.nth n = some bₙ → 0 < bₙ
+variable (α)
+def continued_fraction [has_one α] [has_zero α] [has_lt α] :=
+{s : simple_continued_fraction α // s.is_continued_fraction}
+variable {α}
+namespace continued_fraction
+variables [has_one α] [has_zero α] [has_lt α]
+def of_integer (a : α) : continued_fraction α :=
+⟨simple_continued_fraction.of_integer a, λ n bₙ h, by cases h⟩
+instance : inhabited (continued_fraction α) := ⟨of_integer 0⟩
+instance has_coe_to_simple_continued_fraction :
+  has_coe (continued_fraction α) (simple_continued_fraction α) :=
+by {unfold continued_fraction, apply_instance}
+lemma coe_to_simple_continued_fraction {c : continued_fraction α} :
+  (↑c : simple_continued_fraction α) = c.val := rfl
+instance has_coe_to_generalized_continued_fraction :
+  has_coe (continued_fraction α) (generalized_continued_fraction α) :=
+⟨λ c, ↑(↑c : simple_continued_fraction α)⟩
+lemma coe_to_generalized_continued_fraction {c : continued_fraction α} :
+  (↑c : generalized_continued_fraction α) = c.val := rfl
+end continued_fraction
+namespace generalized_continued_fraction
+def next_numerator (a b ppredA predA : K) : K := b * predA + a * ppredA
+def next_denominator (aₙ bₙ ppredB predB : K) : K := bₙ * predB + aₙ * ppredB
+def next_continuants (a b : K) (ppred pred : pair K) : pair K :=
+⟨next_numerator a b ppred.a pred.a, next_denominator a b ppred.b pred.b⟩
+def continuants_aux (g : generalized_continued_fraction K) : stream (pair K)
+| 0 := ⟨1, 0⟩
+| 1 := ⟨g.h, 1⟩
+| (n + 2) :=
+  match g.s.nth n with
+  | none := continuants_aux (n + 1)
+  | some gp := next_continuants gp.a gp.b (continuants_aux n) (continuants_aux $ n + 1)
+  end
+def continuants (g : generalized_continued_fraction K) : stream (pair K) :=
+g.continuants_aux.tail
+def numerators (g : generalized_continued_fraction K) : stream K :=
+g.continuants.map pair.a
+def denominators (g : generalized_continued_fraction K) : stream K :=
+g.continuants.map pair.b
+def convergents (g : generalized_continued_fraction K) : stream K :=
+λ (n : ℕ), (g.numerators n) / (g.denominators n)
+def convergents'_aux : seq (pair K) → ℕ → K
+| s 0 := 0
+| s (n + 1) := match s.head with
+  | none := 0
+  | some gp := gp.a / (gp.b + convergents'_aux s.tail n)
+  end
+def convergents' (g : generalized_continued_fraction K) (n : ℕ) : K := g.h + convergents'_aux g.s n
+end generalized_continued_fraction
+protected lemma ext_iff {g g' : generalized_continued_fraction α} :
+  g = g' ↔ g.h = g'.h ∧ g.s = g'.s :=
+by { cases g, cases g', simp }
+@[ext]
+protected lemma ext {g g' : generalized_continued_fraction α} (hyp : g.h = g'.h ∧ g.s = g'.s) :
+  g = g' :=
+generalized_continued_fraction.ext_iff.elim_right hyp
+end generalized_continued_fraction

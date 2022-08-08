@@ -1,0 +1,22 @@
+import category_theory.monoidal.functor
+import category_theory.functor.functorial
+open category_theory
+universes v₁ v₂ v₃ u₁ u₂ u₃
+open category_theory.category
+open category_theory.functor
+namespace category_theory
+open monoidal_category
+variables {C : Type u₁} [category.{v₁} C] [monoidal_category.{v₁} C]
+          {D : Type u₂} [category.{v₂} D] [monoidal_category.{v₂} D]
+@[simps]
+def of (F : C → D) [I₁ : functorial.{v₁ v₂} F] [I₂ : lax_monoidal.{v₁ v₂} F] :
+  lax_monoidal_functor.{v₁ v₂} C D :=
+{ obj := F,
+  ..I₁, ..I₂ }
+end lax_monoidal_functor
+instance (F : lax_monoidal_functor.{v₁ v₂} C D) : lax_monoidal.{v₁ v₂} (F.obj) := { .. F }
+section
+instance lax_monoidal_id : lax_monoidal.{v₁ v₁} (id : C → C) :=
+{ ε := 𝟙 _,
+  μ := λ X Y, 𝟙 _ }
+end

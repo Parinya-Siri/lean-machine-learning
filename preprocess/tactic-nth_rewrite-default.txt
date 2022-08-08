@@ -1,0 +1,53 @@
+import tactic.nth_rewrite.congr
+open tactic lean.parser interactive interactive.types expr
+namespace tactic
+meta def target_or_hyp_type : option expr → tactic expr
+| none     := target
+| (some h) := infer_type h
+meta def replace_in_state : option expr → expr → expr → tactic unit
+| none     := tactic.replace_target
+| (some h) := λ e p, tactic.replace_hyp h e p >> skip
+open nth_rewrite nth_rewrite.congr nth_rewrite.tracked_rewrite
+open tactic.interactive
+private meta def unpack_rule (p : rw_rule) : tactic (expr × bool) :=
+do r ← to_expr p.rule tt ff,
+   return (r, p.symm)
+meta def get_nth_rewrite (n : ℕ) (q : rw_rules_t) (e : expr) : tactic tracked_rewrite :=
+do rewrites ← q.rules.mmap $ λ r, unpack_rule r >>= all_rewrites e,
+   rewrites.join.nth n <|> fail "failed: not enough rewrites found"
+meta def get_nth_rewrite_with_zoom
+  (n : ℕ) (q : rw_rules_t) (path : list expr_lens.dir) (h : option expr) : tactic tracked_rewrite :=
+do e ← target_or_hyp_type h,
+   (ln, new_e) ← expr_lens.entire.zoom path e,
+   rw ← get_nth_rewrite n q new_e,
+   return ⟨ln.fill rw.exp, rw.proof >>= ln.congr, rw.addr.map $ λ l, path ++ l⟩
+meta def nth_rewrite_core (path : list expr_lens.dir) (n : parse small_nat) (q : parse rw_rules)
+  (l : parse location) : tactic unit :=
+do let fn := λ h, get_nth_rewrite_with_zoom n q path h
+                    >>= λ rw, (rw.proof >>= replace_in_state h rw.exp),
+   match l with
+   | loc.wildcard := l.try_apply (fn ∘ some) (fn none)
+   | _            := l.apply     (fn ∘ some) (fn none)
+   end,
+   tactic.try (tactic.reflexivity reducible),
+   (returnopt q.end_pos >>= save_info <|> skip)
+namespace interactive
+open expr_lens
+meta def nth_rewrite
+  (n : parse small_nat) (q : parse rw_rules) (l : parse location) : tactic unit :=
+nth_rewrite_core [] n q l
+meta def nth_rewrite_lhs (n : parse small_nat) (q : parse rw_rules) (l : parse location) :
+  tactic unit :=
+nth_rewrite_core [dir.F, dir.A] n q l
+meta def nth_rewrite_rhs (n : parse small_nat) (q : parse rw_rules) (l : parse location) :
+  tactic unit :=
+nth_rewrite_core [dir.A] n q l
+copy_doc_string nth_rewrite → nth_rewrite_lhs nth_rewrite_rhs
+add_tactic_doc
+{ name       := "nth_rewrite / nth_rewrite_lhs / nth_rewrite_rhs",
+  category   := doc_category.tactic,
+  inherit_description_from := ``nth_rewrite,
+  decl_names := [``nth_rewrite, ``nth_rewrite_lhs, ``nth_rewrite_rhs],
+  tags       := ["rewriting"] }
+end interactive
+end tactic

@@ -1,0 +1,28 @@
+import algebra.hom.non_unital_alg
+import algebra.lie.basic
+universes u v w
+variables (R : Type u) (L : Type v) [comm_ring R] [lie_ring L] [lie_algebra R L]
+def lie_ring.to_non_unital_non_assoc_semiring : non_unital_non_assoc_semiring L :=
+{ mul           := has_bracket.bracket,
+  left_distrib  := lie_add,
+  right_distrib := add_lie,
+  zero_mul      := zero_lie,
+  mul_zero      := lie_zero,
+  .. (infer_instance : add_comm_monoid L) }
+local attribute [instance] lie_ring.to_non_unital_non_assoc_semiring
+namespace lie_algebra
+instance is_scalar_tower : is_scalar_tower R L L := ⟨smul_lie⟩
+instance smul_comm_class : smul_comm_class R L L := ⟨λ t x y, (lie_smul t x y).symm⟩
+end lie_algebra
+namespace lie_hom
+variables {R L} {L₂ : Type w} [lie_ring L₂] [lie_algebra R L₂]
+@[simps]
+def to_non_unital_alg_hom (f : L →ₗ⁅R⁆ L₂) : L →ₙₐ[R] L₂ :=
+{ to_fun := f,
+  map_zero' := f.map_zero,
+  map_mul'  := f.map_lie,
+  ..f }
+lemma to_non_unital_alg_hom_injective :
+  function.injective (to_non_unital_alg_hom : _ → (L →ₙₐ[R] L₂)) :=
+λ f g h, ext $ non_unital_alg_hom.congr_fun h
+end lie_hom

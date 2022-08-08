@@ -1,0 +1,312 @@
+import topology.metric_space.gluing
+import topology.metric_space.hausdorff_distance
+import topology.continuous_function.bounded
+noncomputable theory
+open_locale classical topological_space nnreal
+universes u v w
+open classical set function topological_space filter metric quotient
+open bounded_continuous_function
+open sum (inl inr)
+local attribute [instance] metric_space_sum
+namespace Gromov_Hausdorff
+section Gromov_Hausdorff_realized
+section definitions
+variables (X : Type u) (Y : Type v)
+  [metric_space X] [compact_space X] [nonempty X]
+  [metric_space Y] [compact_space Y] [nonempty Y]
+@[reducible] private def prod_space_fun : Type* := ((X ⊕ Y) × (X ⊕ Y)) → ℝ
+@[reducible] private def Cb : Type* := bounded_continuous_function ((X ⊕ Y) × (X ⊕ Y)) ℝ
+private def max_var : ℝ≥0 :=
+2 * ⟨diam (univ : set X), diam_nonneg⟩ + 1 + 2 * ⟨diam (univ : set Y), diam_nonneg⟩
+private lemma one_le_max_var : 1 ≤ max_var X Y := calc
+  (1 : real) = 2 * 0 + 1 + 2 * 0 : by simp
+  ... ≤ 2 * diam (univ : set X) + 1 + 2 * diam (univ : set Y) :
+  by apply_rules [add_le_add, mul_le_mul_of_nonneg_left, diam_nonneg]; norm_num
+def candidates : set (prod_space_fun X Y) :=
+  {f | (((((∀ x y : X, f (sum.inl x, sum.inl y) = dist x y)
+    ∧ (∀ x y : Y, f (sum.inr x, sum.inr y) = dist x y))
+    ∧ (∀ x y,     f (x, y) = f (y, x)))
+    ∧ (∀ x y z,   f (x, z) ≤ f (x, y) + f (y, z)))
+    ∧ (∀ x,       f (x, x) = 0))
+    ∧ (∀ x y,     f (x, y) ≤ max_var X Y) }
+private def candidates_b : set (Cb X Y) := {f : Cb X Y | (f : _ → ℝ) ∈ candidates X Y}
+private lemma candidates_dist_bound  (fA : f ∈ candidates X Y) :
+  ∀ {x y : X ⊕ Y}, f (x, y) ≤ max_var X Y * dist x y
+| (inl x) (inl y) := calc
+    f (inl x, inl y) = dist x y : candidates_dist_inl fA x y
+    ... = dist (inl x) (inl y) : by { rw @sum.dist_eq X Y, refl }
+    ... = 1 * dist (inl x) (inl y) : by simp
+    ... ≤ max_var X Y * dist (inl x) (inl y) :
+      mul_le_mul_of_nonneg_right (one_le_max_var X Y) dist_nonneg
+| (inl x) (inr y) := calc
+    f (inl x, inr y) ≤ max_var X Y : candidates_le_max_var fA
+    ... = max_var X Y * 1 : by simp
+    ... ≤ max_var X Y * dist (inl x) (inr y) :
+      mul_le_mul_of_nonneg_left sum.one_dist_le (le_trans (zero_le_one) (one_le_max_var X Y))
+| (inr x) (inl y) := calc
+    f (inr x, inl y) ≤ max_var X Y : candidates_le_max_var fA
+    ... = max_var X Y * 1 : by simp
+    ... ≤ max_var X Y * dist (inl x) (inr y) :
+      mul_le_mul_of_nonneg_left sum.one_dist_le (le_trans (zero_le_one) (one_le_max_var X Y))
+| (inr x) (inr y) := calc
+    f (inr x, inr y) = dist x y : candidates_dist_inr fA x y
+    ... = dist (inr x) (inr y) : by { rw @sum.dist_eq X Y, refl }
+    ... = 1 * dist (inr x) (inr y) : by simp
+    ... ≤ max_var X Y * dist (inr x) (inr y) :
+      mul_le_mul_of_nonneg_right (one_le_max_var X Y) dist_nonneg
+private lemma candidates_lipschitz_aux (fA : f ∈ candidates X Y) :
+  f (x, y) - f (z, t) ≤ 2 * max_var X Y * dist (x, y) (z, t) :=
+calc
+  f (x, y) - f(z, t) ≤ f (x, t) + f (t, y) - f (z, t) : sub_le_sub_right (candidates_triangle fA) _
+  ... ≤ (f (x, z) + f (z, t) + f(t, y)) - f (z, t) :
+    sub_le_sub_right (add_le_add_right (candidates_triangle fA) _ ) _
+  ... = f (x, z) + f (t, y) : by simp [sub_eq_add_neg, add_assoc]
+  ... ≤ max_var X Y * dist x z + max_var X Y * dist t y :
+    add_le_add (candidates_dist_bound fA) (candidates_dist_bound fA)
+  ... ≤ max_var X Y * max (dist x z) (dist t y) + max_var X Y * max (dist x z) (dist t y) :
+  begin
+    apply add_le_add,
+    apply mul_le_mul_of_nonneg_left (le_max_left (dist x z) (dist t y))
+      (zero_le_one.trans (one_le_max_var X Y)),
+    apply mul_le_mul_of_nonneg_left (le_max_right (dist x z) (dist t y))
+      (zero_le_one.trans (one_le_max_var X Y)),
+  end
+  ... = 2 * max_var X Y * max (dist x z) (dist y t) :
+    by { simp [dist_comm], ring }
+  ... = 2 * max_var X Y * dist (x, y) (z, t) : by refl
+private lemma candidates_lipschitz (fA : f ∈ candidates X Y) :
+  lipschitz_with (2 * max_var X Y) f :=
+begin
+  apply lipschitz_with.of_dist_le_mul,
+  rintros ⟨x, y⟩ ⟨z, t⟩,
+  rw [real.dist_eq, abs_sub_le_iff],
+  use candidates_lipschitz_aux fA,
+  rw [dist_comm],
+  exact candidates_lipschitz_aux fA
+end
+def candidates_b_of_candidates (f : prod_space_fun X Y) (fA : f ∈ candidates X Y) : Cb X Y :=
+bounded_continuous_function.mk_of_compact ⟨f, (candidates_lipschitz fA).continuous⟩
+lemma candidates_b_of_candidates_mem (f : prod_space_fun X Y) (fA : f ∈ candidates X Y) :
+  candidates_b_of_candidates f fA ∈ candidates_b X Y := fA
+private lemma dist_mem_candidates : (λp : (X ⊕ Y) × (X ⊕ Y), dist p.1 p.2) ∈ candidates X Y :=
+begin
+  simp only [candidates, dist_comm, forall_const, and_true, add_comm, eq_self_iff_true,
+             and_self, sum.forall, set.mem_set_of_eq, dist_self],
+  repeat { split
+    <|> exact (λa y z, dist_triangle_left _ _ _)
+    <|> exact (λx y, by refl)
+    <|> exact (λx y, max_var_bound) }
+end
+def candidates_b_dist (X : Type u) (Y : Type v) [metric_space X] [compact_space X] [inhabited X]
+  [metric_space Y] [compact_space Y] [inhabited Y] : Cb X Y :=
+candidates_b_of_candidates _ dist_mem_candidates
+lemma candidates_b_dist_mem_candidates_b : candidates_b_dist X Y ∈ candidates_b X Y :=
+candidates_b_of_candidates_mem _ _
+private lemma candidates_b_nonempty : (candidates_b X Y).nonempty :=
+⟨_,  candidates_b_dist_mem_candidates_b⟩
+private lemma closed_candidates_b : is_closed (candidates_b X Y) :=
+begin
+  have I1 : ∀ x y, is_closed {f : Cb X Y | f (inl x, inl y) = dist x y} :=
+    λx y, is_closed_eq continuous_eval_const continuous_const,
+  have I2 : ∀ x y, is_closed {f : Cb X Y | f (inr x, inr y) = dist x y } :=
+    λx y, is_closed_eq continuous_eval_const continuous_const,
+  have I3 : ∀ x y, is_closed {f : Cb X Y | f (x, y) = f (y, x)} :=
+    λx y, is_closed_eq continuous_eval_const continuous_eval_const,
+  have I4 : ∀ x y z, is_closed {f : Cb X Y | f (x, z) ≤ f (x, y) + f (y, z)} :=
+    λx y z, is_closed_le continuous_eval_const (continuous_eval_const.add continuous_eval_const),
+  have I5 : ∀ x, is_closed {f : Cb X Y | f (x, x) = 0} :=
+    λx, is_closed_eq continuous_eval_const continuous_const,
+  have I6 : ∀ x y, is_closed {f : Cb X Y | f (x, y) ≤ max_var X Y} :=
+    λx y, is_closed_le continuous_eval_const continuous_const,
+  have : candidates_b X Y = (⋂x y, {f : Cb X Y | f ((@inl X Y x), (@inl X Y y)) = dist x y})
+               ∩ (⋂x y, {f : Cb X Y | f ((@inr X Y x), (@inr X Y y)) = dist x y})
+               ∩ (⋂x y, {f : Cb X Y | f (x, y) = f (y, x)})
+               ∩ (⋂x y z, {f : Cb X Y | f (x, z) ≤ f (x, y) + f (y, z)})
+               ∩ (⋂x, {f : Cb X Y | f (x, x) = 0})
+               ∩ (⋂x y, {f : Cb X Y | f (x, y) ≤ max_var X Y}),
+  { ext, simp only [candidates_b, candidates, mem_inter_eq, mem_Inter, mem_set_of_eq] },
+  rw this,
+  repeat { apply is_closed.inter _ _
+       <|> apply is_closed_Inter _
+       <|> apply I1 _ _
+       <|> apply I2 _ _
+       <|> apply I3 _ _
+       <|> apply I4 _ _ _
+       <|> apply I5 _
+       <|> apply I6 _ _
+       <|> assume x },
+end
+private lemma compact_candidates_b : is_compact (candidates_b X Y) :=
+begin
+  refine arzela_ascoli₂ (Icc 0 (max_var X Y)) is_compact_Icc (candidates_b X Y)
+  closed_candidates_b _ _,
+  { rintros f ⟨x1, x2⟩ hf,
+    simp only [set.mem_Icc],
+    exact ⟨candidates_nonneg hf, candidates_le_max_var hf⟩ },
+  { refine equicontinuous_of_continuity_modulus (λt, 2 * max_var X Y * t) _ _ _,
+    { have : tendsto (λ (t : ℝ), 2 * (max_var X Y : ℝ) * t) (𝓝 0) (𝓝 (2 * max_var X Y * 0)) :=
+        tendsto_const_nhds.mul tendsto_id,
+      simpa using this },
+    { assume x y f hf,
+      exact (candidates_lipschitz hf).dist_le_mul _ _ } }
+end
+def HD (f : Cb X Y) := max (⨆ x, ⨅ y, f (inl x, inr y)) (⨆ y, ⨅ x, f (inl x, inr y))
+lemma HD_below_aux1 {f : Cb X Y} (C : ℝ) {x : X} :
+  bdd_below (range (λ (y : Y), f (inl x, inr y) + C)) :=
+let ⟨cf, hcf⟩ := (real.bounded_iff_bdd_below_bdd_above.1 f.bounded_range).1 in
+⟨cf + C, forall_range_iff.2 (λi, add_le_add_right ((λx, hcf (mem_range_self x)) _) _)⟩
+private lemma HD_bound_aux1 (f : Cb X Y) (C : ℝ) :
+  bdd_above (range (λ (x : X), ⨅ y, f (inl x, inr y) + C)) :=
+begin
+  rcases (real.bounded_iff_bdd_below_bdd_above.1 f.bounded_range).2 with ⟨Cf, hCf⟩,
+  refine ⟨Cf + C, forall_range_iff.2 (λx, _)⟩,
+  calc (⨅ y, f (inl x, inr y) + C) ≤ f (inl x, inr default) + C :
+    cinfi_le (HD_below_aux1 C) default
+    ... ≤ Cf + C : add_le_add ((λx, hCf (mem_range_self x)) _) le_rfl
+end
+lemma HD_below_aux2 {f : Cb X Y} (C : ℝ) {y : Y} :
+  bdd_below (range (λ (x : X), f (inl x, inr y) + C)) :=
+let ⟨cf, hcf⟩ := (real.bounded_iff_bdd_below_bdd_above.1 f.bounded_range).1 in
+⟨cf + C, forall_range_iff.2 (λi, add_le_add_right ((λx, hcf (mem_range_self x)) _) _)⟩
+private lemma HD_bound_aux2 (f : Cb X Y) (C : ℝ) :
+  bdd_above (range (λ (y : Y), ⨅ x, f (inl x, inr y) + C)) :=
+begin
+  rcases (real.bounded_iff_bdd_below_bdd_above.1 f.bounded_range).2 with ⟨Cf, hCf⟩,
+  refine ⟨Cf + C, forall_range_iff.2 (λy, _)⟩,
+  calc (⨅ x, f (inl x, inr y) + C) ≤ f (inl default, inr y) + C :
+    cinfi_le (HD_below_aux2 C) default
+  ... ≤ Cf + C : add_le_add ((λx, hCf (mem_range_self x)) _) le_rfl
+end
+lemma HD_candidates_b_dist_le :
+  HD (candidates_b_dist X Y) ≤ diam (univ : set X) + 1 + diam (univ : set Y) :=
+begin
+  refine max_le (csupr_le (λx, _)) (csupr_le (λy, _)),
+  { have A : (⨅ y, candidates_b_dist X Y (inl x, inr y)) ≤
+      candidates_b_dist X Y (inl x, inr default) :=
+      cinfi_le (by simpa using HD_below_aux1 0) default,
+    have B : dist (inl x) (inr default) ≤ diam (univ : set X) + 1 + diam (univ : set Y) := calc
+      dist (inl x) (inr (default : Y)) = dist x (default : X) + 1 + dist default default : rfl
+      ... ≤ diam (univ : set X) + 1 + diam (univ : set Y) :
+      begin
+        apply add_le_add (add_le_add _ le_rfl),
+        exact dist_le_diam_of_mem bounded_of_compact_space (mem_univ _) (mem_univ _),
+        any_goals { exact ordered_add_comm_monoid.to_covariant_class_left ℝ },
+        any_goals { exact ordered_add_comm_monoid.to_covariant_class_right ℝ },
+        exact dist_le_diam_of_mem bounded_of_compact_space (mem_univ _) (mem_univ _),
+      end,
+    exact le_trans A B },
+  { have A : (⨅ x, candidates_b_dist X Y (inl x, inr y)) ≤
+      candidates_b_dist X Y (inl default, inr y) :=
+      cinfi_le (by simpa using HD_below_aux2 0) default,
+    have B : dist (inl default) (inr y) ≤ diam (univ : set X) + 1 + diam (univ : set Y) := calc
+      dist (inl (default : X)) (inr y) = dist default default + 1 + dist default y : rfl
+      ... ≤ diam (univ : set X) + 1 + diam (univ : set Y) :
+      begin
+        apply add_le_add (add_le_add _ le_rfl),
+        exact dist_le_diam_of_mem bounded_of_compact_space (mem_univ _) (mem_univ _),
+        any_goals { exact ordered_add_comm_monoid.to_covariant_class_left ℝ },
+        any_goals { exact ordered_add_comm_monoid.to_covariant_class_right ℝ },
+        exact dist_le_diam_of_mem bounded_of_compact_space (mem_univ _) (mem_univ _)
+      end,
+    exact le_trans A B },
+end
+private lemma HD_lipschitz_aux1 (f g : Cb X Y) :
+  (⨆ x, ⨅ y, f (inl x, inr y)) ≤ (⨆ x, ⨅ y, g (inl x, inr y)) + dist f g :=
+begin
+  rcases (real.bounded_iff_bdd_below_bdd_above.1 g.bounded_range).1 with ⟨cg, hcg⟩,
+  have Hcg : ∀ x, cg ≤ g x := λx, hcg (mem_range_self x),
+  rcases (real.bounded_iff_bdd_below_bdd_above.1 f.bounded_range).1 with ⟨cf, hcf⟩,
+  have Hcf : ∀ x, cf ≤ f x := λx, hcf (mem_range_self x),
+private lemma HD_continuous : continuous (HD : Cb X Y → ℝ) :=
+lipschitz_with.continuous (lipschitz_with.of_le_add HD_lipschitz_aux3)
+private lemma exists_minimizer : ∃ f ∈ candidates_b X Y, ∀ g ∈ candidates_b X Y, HD f ≤ HD g :=
+compact_candidates_b.exists_forall_le candidates_b_nonempty HD_continuous.continuous_on
+private definition optimal_GH_dist : Cb X Y := classical.some (exists_minimizer X Y)
+private lemma optimal_GH_dist_mem_candidates_b : optimal_GH_dist X Y ∈ candidates_b X Y :=
+by cases (classical.some_spec (exists_minimizer X Y)); assumption
+private lemma HD_optimal_GH_dist_le (g : Cb X Y) (hg : g ∈ candidates_b X Y) :
+  HD (optimal_GH_dist X Y) ≤ HD g :=
+let ⟨Z1, Z2⟩ := classical.some_spec (exists_minimizer X Y) in Z2 g hg
+def premetric_optimal_GH_dist : pseudo_metric_space (X ⊕ Y) :=
+{ dist := λp q, optimal_GH_dist X Y (p, q),
+  dist_self := λx, candidates_refl (optimal_GH_dist_mem_candidates_b X Y),
+  dist_comm := λx y, candidates_symm (optimal_GH_dist_mem_candidates_b X Y),
+  dist_triangle := λx y z, candidates_triangle (optimal_GH_dist_mem_candidates_b X Y) }
+local attribute [instance] premetric_optimal_GH_dist pseudo_metric.dist_setoid
+@[derive metric_space, nolint has_inhabited_instance]
+definition optimal_GH_coupling : Type* :=
+pseudo_metric_quot (X ⊕ Y)
+def optimal_GH_injl (x : X) : optimal_GH_coupling X Y := ⟦inl x⟧
+lemma isometry_optimal_GH_injl : isometry (optimal_GH_injl X Y) :=
+begin
+  refine isometry_emetric_iff_metric.2 (λx y, _),
+  change dist ⟦inl x⟧ ⟦inl y⟧ = dist x y,
+  exact candidates_dist_inl (optimal_GH_dist_mem_candidates_b X Y) _ _,
+end
+def optimal_GH_injr (y : Y) : optimal_GH_coupling X Y := ⟦inr y⟧
+lemma isometry_optimal_GH_injr : isometry (optimal_GH_injr X Y) :=
+begin
+  refine isometry_emetric_iff_metric.2 (λx y, _),
+  change dist ⟦inr x⟧ ⟦inr y⟧ = dist x y,
+  exact candidates_dist_inr (optimal_GH_dist_mem_candidates_b X Y) _ _,
+end
+instance compact_space_optimal_GH_coupling : compact_space (optimal_GH_coupling X Y) :=
+⟨begin
+  have : (univ : set (optimal_GH_coupling X Y)) =
+           (optimal_GH_injl X Y '' univ) ∪ (optimal_GH_injr X Y '' univ),
+  { refine subset.antisymm (λxc hxc, _) (subset_univ _),
+    rcases quotient.exists_rep xc with ⟨x, hx⟩,
+    cases x; rw ← hx,
+    { have : ⟦inl x⟧ = optimal_GH_injl X Y x := rfl,
+      rw this,
+      exact mem_union_left _ (mem_image_of_mem _ (mem_univ _)) },
+    { have : ⟦inr x⟧ = optimal_GH_injr X Y x := rfl,
+      rw this,
+      exact mem_union_right _ (mem_image_of_mem _ (mem_univ _)) } },
+  rw this,
+  exact (compact_univ.image (isometry_optimal_GH_injl X Y).continuous).union
+    (compact_univ.image (isometry_optimal_GH_injr X Y).continuous)
+end⟩
+lemma Hausdorff_dist_optimal_le_HD {f} (h : f ∈ candidates_b X Y) :
+  Hausdorff_dist (range (optimal_GH_injl X Y)) (range (optimal_GH_injr X Y)) ≤ HD f :=
+begin
+  refine le_trans (le_of_forall_le_of_dense (λr hr, _)) (HD_optimal_GH_dist_le X Y f h),
+  have A : ∀ x ∈ range (optimal_GH_injl X Y), ∃ y ∈ range (optimal_GH_injr X Y), dist x y ≤ r,
+  { assume x hx,
+    rcases mem_range.1 hx with ⟨z, hz⟩,
+    rw ← hz,
+    have I1 : (⨆ x, ⨅ y, optimal_GH_dist X Y (inl x, inr y)) < r :=
+      lt_of_le_of_lt (le_max_left _ _) hr,
+    have I2 : (⨅ y, optimal_GH_dist X Y (inl z, inr y)) ≤
+        ⨆ x, ⨅ y, optimal_GH_dist X Y (inl x, inr y) :=
+      le_cSup (by simpa using HD_bound_aux1 _ 0) (mem_range_self _),
+    have I : (⨅ y, optimal_GH_dist X Y (inl z, inr y)) < r := lt_of_le_of_lt I2 I1,
+    rcases exists_lt_of_cInf_lt (range_nonempty _) I with ⟨r', r'range, hr'⟩,
+    rcases mem_range.1 r'range with ⟨z', hz'⟩,
+    existsi [optimal_GH_injr X Y z', mem_range_self _],
+    have : (optimal_GH_dist X Y) (inl z, inr z') ≤ r, by { rw hz', exact le_of_lt hr' },
+    exact this },
+  refine Hausdorff_dist_le_of_mem_dist _ A _,
+  { rcases exists_mem_of_nonempty X with ⟨xX, _⟩,
+    have : optimal_GH_injl X Y xX ∈ range (optimal_GH_injl X Y) := mem_range_self _,
+    rcases A _ this with ⟨y, yrange, hy⟩,
+    exact le_trans dist_nonneg hy },
+  { assume y hy,
+    rcases mem_range.1 hy with ⟨z, hz⟩,
+    rw ← hz,
+    have I1 : (⨆ y, ⨅ x, optimal_GH_dist X Y (inl x, inr y)) < r :=
+      lt_of_le_of_lt (le_max_right _ _) hr,
+    have I2 : (⨅ x, optimal_GH_dist X Y (inl x, inr z)) ≤
+        ⨆ y, ⨅ x, optimal_GH_dist X Y (inl x, inr y) :=
+      le_cSup (by simpa using HD_bound_aux2 _ 0) (mem_range_self _),
+    have I : (⨅ x, optimal_GH_dist X Y (inl x, inr z)) < r := lt_of_le_of_lt I2 I1,
+    rcases exists_lt_of_cInf_lt (range_nonempty _) I with ⟨r', r'range, hr'⟩,
+    rcases mem_range.1 r'range with ⟨z', hz'⟩,
+    existsi [optimal_GH_injl X Y z', mem_range_self _],
+    have : (optimal_GH_dist X Y) (inl z', inr z) ≤ r, by { rw hz', exact le_of_lt hr' },
+    rw dist_comm,
+    exact this }
+end
+end consequences
+end Gromov_Hausdorff_realized
+end Gromov_Hausdorff

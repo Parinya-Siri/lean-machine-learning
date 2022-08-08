@@ -1,0 +1,22 @@
+import linear_algebra.matrix.to_lin
+noncomputable theory
+open linear_map matrix set submodule
+open_locale big_operators
+open_locale matrix
+universes u v w
+namespace matrix
+section comm_ring
+variables {n : Type*} [fintype n] [decidable_eq n] {R : Type v} [comm_ring R]
+lemma proj_diagonal (i : n) (w : n → R) :
+  (proj i).comp (to_lin' (diagonal w)) = (w i) • proj i :=
+linear_map.ext $ λ j, mul_vec_diagonal _ _ _
+lemma diagonal_comp_std_basis (w : n → R) (i : n) :
+  (diagonal w).to_lin'.comp (linear_map.std_basis R (λ_:n, R) i) =
+  (w i) • linear_map.std_basis R (λ_:n, R) i :=
+linear_map.ext $ λ x, (diagonal_mul_vec_single w _ _).trans (pi.single_smul' i (w i) _)
+lemma diagonal_to_lin' (w : n → R) :
+  (diagonal w).to_lin' = linear_map.pi (λi, w i • linear_map.proj i) :=
+linear_map.ext $ λ v, funext $ λ i, mul_vec_diagonal _ _ _
+end comm_ring
+section field
+variables {m n : Type*} [fintype m] [fintype n]

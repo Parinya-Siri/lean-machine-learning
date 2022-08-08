@@ -1,0 +1,32 @@
+import linear_algebra.matrix.determinant
+import data.mv_polynomial.basic
+import data.mv_polynomial.comm_ring
+variables {m n R S : Type*}
+namespace matrix
+variables (m n R)
+@[simp] noncomputable def mv_polynomial_X [comm_semiring R] : matrix m n (mv_polynomial (m × n) R)
+| i j := mv_polynomial.X (i, j)
+variables {m n R S}
+lemma mv_polynomial_X_map_eval₂ [comm_semiring R] [comm_semiring S]
+  (f : R →+* S) (A : matrix m n S) :
+  (mv_polynomial_X m n R).map (mv_polynomial.eval₂ f $ λ p : m × n, A p.1 p.2) = A :=
+ext $ λ i j, mv_polynomial.eval₂_X _ (λ p : m × n, A p.1 p.2) (i, j)
+lemma mv_polynomial_X_map_matrix_eval [fintype m] [decidable_eq m]
+  [comm_semiring R] (A : matrix m m R) :
+  (mv_polynomial.eval $ λ p : m × m, A p.1 p.2).map_matrix (mv_polynomial_X m m R) = A :=
+mv_polynomial_X_map_eval₂ _ A
+variables (R)
+lemma mv_polynomial_X_map_matrix_aeval [fintype m] [decidable_eq m]
+  [comm_semiring R] [comm_semiring S] [algebra R S] (A : matrix m m S) :
+  (mv_polynomial.aeval $ λ p : m × m, A p.1 p.2).map_matrix (mv_polynomial_X m m R) = A :=
+mv_polynomial_X_map_eval₂ _ A
+variables (m R)
+lemma det_mv_polynomial_X_ne_zero [decidable_eq m] [fintype m] [comm_ring R] [nontrivial R] :
+  det (mv_polynomial_X m m R) ≠ 0 :=
+begin
+  intro h_det,
+  have := congr_arg matrix.det (mv_polynomial_X_map_matrix_eval (1 : matrix m m R)),
+  rw [det_one, ←ring_hom.map_det, h_det, ring_hom.map_zero] at this,
+  exact zero_ne_one this,
+end
+end matrix

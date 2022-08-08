@@ -1,0 +1,119 @@
+import combinatorics.quiver.basic
+import tactic.basic
+library_note "category_theory universes"
+universes v u
+namespace category_theory
+class category_struct (obj : Type u)
+extends quiver.{v+1} obj : Type (max u (v+1)) :=
+(id       : Π X : obj, hom X X)
+(comp     : Π {X Y Z : obj}, (X ⟶ Y) → (Y ⟶ Z) → (X ⟶ Z))
+class category (obj : Type u)
+extends category_struct.{v} obj : Type (max u (v+1)) :=
+(id_comp' : ∀ {X Y : obj} (f : hom X Y), 𝟙 X ≫ f = f . obviously)
+(comp_id' : ∀ {X Y : obj} (f : hom X Y), f ≫ 𝟙 Y = f . obviously)
+(assoc'   : ∀ {W X Y Z : obj} (f : hom W X) (g : hom X Y) (h : hom Y Z),
+  (f ≫ g) ≫ h = f ≫ (g ≫ h) . obviously)
+abbreviation large_category (C : Type (u+1)) : Type (u+1) := category.{u} C
+abbreviation small_category (C : Type u) : Type (u+1) := category.{u} C
+section
+variables {C : Type u} [category.{v} C] {X Y Z : C}
+initialize_simps_projections category (to_category_struct_to_quiver_hom → hom,
+  to_category_struct_comp → comp, to_category_struct_id → id, -to_category_struct)
+lemma eq_whisker {f g : X ⟶ Y} (w : f = g) (h : Y ⟶ Z) : f ≫ h = g ≫ h :=
+by rw w
+lemma whisker_eq (f : X ⟶ Y) {g h : Y ⟶ Z} (w : g = h) : f ≫ g = f ≫ h :=
+by rw w
+infixr ` =≫ `:80 := eq_whisker
+infixr ` ≫= `:80 := whisker_eq
+lemma eq_of_comp_left_eq {f g : X ⟶ Y} (w : ∀ {Z : C} (h : Y ⟶ Z), f ≫ h = g ≫ h) : f = g :=
+by { convert w (𝟙 Y), tidy }
+lemma eq_of_comp_right_eq {f g : Y ⟶ Z} (w : ∀ {X : C} (h : X ⟶ Y), h ≫ f = h ≫ g) : f = g :=
+by { convert w (𝟙 Y), tidy }
+lemma eq_of_comp_left_eq' (f g : X ⟶ Y)
+  (w : (λ {Z : C} (h : Y ⟶ Z), f ≫ h) = (λ {Z : C} (h : Y ⟶ Z), g ≫ h)) : f = g :=
+eq_of_comp_left_eq (λ Z h, by convert congr_fun (congr_fun w Z) h)
+lemma eq_of_comp_right_eq' (f g : Y ⟶ Z)
+  (w : (λ {X : C} (h : X ⟶ Y), h ≫ f) = (λ {X : C} (h : X ⟶ Y), h ≫ g)) : f = g :=
+eq_of_comp_right_eq (λ X h, by convert congr_fun (congr_fun w X) h)
+lemma id_of_comp_left_id (f : X ⟶ X) (w : ∀ {Y : C} (g : X ⟶ Y), f ≫ g = g) : f = 𝟙 X :=
+by { convert w (𝟙 X), tidy }
+lemma id_of_comp_right_id (f : X ⟶ X) (w : ∀ {Y : C} (g : Y ⟶ X), g ≫ f = g) : f = 𝟙 X :=
+by { convert w (𝟙 X), tidy }
+lemma comp_ite {P : Prop} [decidable P]
+  {X Y Z : C} (f : X ⟶ Y) (g g' : (Y ⟶ Z)) :
+  (f ≫ if P then g else g') = (if P then f ≫ g else f ≫ g') :=
+by { split_ifs; refl }
+lemma ite_comp {P : Prop} [decidable P]
+  {X Y Z : C} (f f' : (X ⟶ Y))  (g : Y ⟶ Z) :
+  (if P then f else f') ≫ g = (if P then f ≫ g else f' ≫ g) :=
+by { split_ifs; refl }
+lemma comp_dite {P : Prop} [decidable P]
+  {X Y Z : C} (f : X ⟶ Y) (g : P → (Y ⟶ Z)) (g' : ¬P → (Y ⟶ Z)) :
+  (f ≫ if h : P then g h else g' h) = (if h : P then f ≫ g h else f ≫ g' h) :=
+by { split_ifs; refl }
+lemma dite_comp {P : Prop} [decidable P]
+  {X Y Z : C} (f : P → (X ⟶ Y)) (f' : ¬P → (X ⟶ Y)) (g : Y ⟶ Z) :
+  (if h : P then f h else f' h) ≫ g = (if h : P then f h ≫ g else f' h ≫ g) :=
+by { split_ifs; refl }
+class epi (f : X ⟶ Y) : Prop :=
+(left_cancellation : Π {Z : C} (g h : Y ⟶ Z) (w : f ≫ g = f ≫ h), g = h)
+class mono (f : X ⟶ Y) : Prop :=
+(right_cancellation : Π {Z : C} (g h : Z ⟶ X) (w : g ≫ f = h ≫ f), g = h)
+instance (X : C) : epi (𝟙 X) :=
+⟨λ Z g h w, by simpa using w⟩
+instance (X : C) : mono (𝟙 X) :=
+⟨λ Z g h w, by simpa using w⟩
+lemma cancel_epi (f : X ⟶ Y) [epi f] {g h : Y ⟶ Z} : (f ≫ g = f ≫ h) ↔ g = h :=
+⟨λ p, epi.left_cancellation g h p, congr_arg _⟩
+lemma cancel_mono (f : X ⟶ Y) [mono f] {g h : Z ⟶ X} : (g ≫ f = h ≫ f) ↔ g = h :=
+⟨λ p, mono.right_cancellation g h p, congr_arg _⟩
+lemma cancel_epi_id (f : X ⟶ Y) [epi f] {h : Y ⟶ Y} : (f ≫ h = f) ↔ h = 𝟙 Y :=
+by { convert cancel_epi f, simp, }
+lemma cancel_mono_id (f : X ⟶ Y) [mono f] {g : X ⟶ X} : (g ≫ f = f) ↔ g = 𝟙 X :=
+by { convert cancel_mono f, simp, }
+lemma epi_comp {X Y Z : C} (f : X ⟶ Y) [epi f] (g : Y ⟶ Z) [epi g] : epi (f ≫ g) :=
+begin
+  split, intros Z a b w,
+  apply (cancel_epi g).1,
+  apply (cancel_epi f).1,
+  simpa using w,
+end
+lemma mono_comp {X Y Z : C} (f : X ⟶ Y) [mono f] (g : Y ⟶ Z) [mono g] : mono (f ≫ g) :=
+begin
+  split, intros Z a b w,
+  apply (cancel_mono f).1,
+  apply (cancel_mono g).1,
+  simpa using w,
+end
+lemma mono_of_mono {X Y Z : C} (f : X ⟶ Y) (g : Y ⟶ Z) [mono (f ≫ g)] : mono f :=
+begin
+  split, intros Z a b w,
+  replace w := congr_arg (λ k, k ≫ g) w,
+  dsimp at w,
+  rw [category.assoc, category.assoc] at w,
+  exact (cancel_mono _).1 w,
+end
+lemma mono_of_mono_fac {X Y Z : C} {f : X ⟶ Y} {g : Y ⟶ Z} {h : X ⟶ Z} [mono h] (w : f ≫ g = h) :
+  mono f :=
+by { substI h, exact mono_of_mono f g, }
+lemma epi_of_epi {X Y Z : C} (f : X ⟶ Y) (g : Y ⟶ Z) [epi (f ≫ g)] : epi g :=
+begin
+  split, intros Z a b w,
+  replace w := congr_arg (λ k, f ≫ k) w,
+  dsimp at w,
+  rw [←category.assoc, ←category.assoc] at w,
+  exact (cancel_epi _).1 w,
+end
+lemma epi_of_epi_fac {X Y Z : C} {f : X ⟶ Y} {g : Y ⟶ Z} {h : X ⟶ Z} [epi h] (w : f ≫ g = h) :
+  epi g :=
+by substI h; exact epi_of_epi f g
+end
+section
+variable (C : Type u)
+variable [category.{v} C]
+universe u'
+instance ulift_category : category.{v} (ulift.{u'} C) :=
+{ hom  := λ X Y, (X.down ⟶ Y.down),
+  id   := λ X, 𝟙 X.down,
+  comp := λ _ _ _ f g, f ≫ g }
+library_note "dsimp, simp"

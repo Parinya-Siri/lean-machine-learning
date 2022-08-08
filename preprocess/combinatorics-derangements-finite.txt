@@ -1,0 +1,38 @@
+import combinatorics.derangements.basic
+import data.fintype.card
+import tactic.delta_instance
+import tactic.ring
+open derangements equiv fintype
+open_locale big_operators
+variables {α : Type*} [decidable_eq α] [fintype α]
+instance : decidable_pred (derangements α) := λ _, fintype.decidable_forall_fintype
+instance : fintype (derangements α) := by delta_instance derangements
+lemma card_derangements_invariant {α β : Type*} [fintype α] [decidable_eq α]
+  [fintype β] [decidable_eq β] (h : card α = card β) :
+  card (derangements α) = card (derangements β) :=
+fintype.card_congr (equiv.derangements_congr $ equiv_of_card_eq h)
+lemma card_derangements_fin_add_two (n : ℕ) :
+  card (derangements (fin (n+2))) = (n+1) * card (derangements (fin n)) +
+  (n+1) * card (derangements (fin (n+1))) :=
+begin
+def num_derangements : ℕ → ℕ
+| 0 := 1
+| 1 := 0
+| (n + 2) := (n + 1) * (num_derangements n + num_derangements (n+1))
+@[simp] lemma num_derangements_zero : num_derangements 0 = 1 := rfl
+@[simp] lemma num_derangements_one : num_derangements 1 = 0 := rfl
+lemma num_derangements_add_two (n : ℕ) :
+  num_derangements (n+2) = (n+1) * (num_derangements n + num_derangements (n+1)) := rfl
+lemma num_derangements_succ (n : ℕ) :
+  (num_derangements (n+1) : ℤ) = (n + 1) * (num_derangements n : ℤ) - (-1)^n :=
+begin
+  induction n with n hn,
+  { refl },
+  { simp only [num_derangements_add_two, hn, pow_succ,
+      int.coe_nat_mul, int.coe_nat_add, int.coe_nat_succ],
+    ring }
+end
+lemma card_derangements_fin_eq_num_derangements {n : ℕ} :
+  card (derangements (fin n)) = num_derangements n :=
+begin
+  induction n using nat.strong_induction_on with n hyp,

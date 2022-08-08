@@ -1,0 +1,33 @@
+import data.matrix.basic
+import linear_algebra.matrix.trace
+variables {l m n : Type*}
+variables {R α : Type*}
+namespace matrix
+open_locale matrix
+open_locale big_operators
+variables [decidable_eq l] [decidable_eq m] [decidable_eq n]
+variables [semiring α]
+def std_basis_matrix (i : m) (j : n) (a : α) : matrix m n α :=
+(λ i' j', if i = i' ∧ j = j' then a else 0)
+@[simp] lemma smul_std_basis_matrix (i : m) (j : n) (a b : α) :
+b • std_basis_matrix i j a = std_basis_matrix i j (b • a) :=
+by { unfold std_basis_matrix, ext, simp }
+@[simp] lemma std_basis_matrix_zero (i : m) (j : n) :
+std_basis_matrix i j (0 : α) = 0 :=
+by { unfold std_basis_matrix, ext, simp }
+lemma std_basis_matrix_add (i : m) (j : n) (a b : α) :
+std_basis_matrix i j (a + b) = std_basis_matrix i j a + std_basis_matrix i j b :=
+begin
+  unfold std_basis_matrix, ext,
+  split_ifs with h; simp [h],
+end
+lemma matrix_eq_sum_std_basis [fintype m] [fintype n] (x : matrix m n α) :
+  x = ∑ (i : m) (j : n), std_basis_matrix i j (x i j) :=
+begin
+  ext, symmetry,
+  iterate 2 { rw finset.sum_apply },
+  convert fintype.sum_eq_single i _,
+  { simp [std_basis_matrix] },
+  { intros j hj,
+    simp [std_basis_matrix, hj], }
+end

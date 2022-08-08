@@ -1,0 +1,133 @@
+import algebra.group.defs
+import data.bracket
+import logic.function.basic
+open function
+universe u
+variables {α G : Type*}
+section associative
+variables (f : α → α → α) [is_associative α f] (x y : α)
+lemma comp_assoc_left : (f x) ∘ (f y) = (f (f x y)) :=
+by { ext z, rw [function.comp_apply, @is_associative.assoc _ f] }
+lemma comp_assoc_right : (λ z, f z x) ∘ (λ z, f z y) = (λ z, f z (f y x)) :=
+by { ext z, rw [function.comp_apply, @is_associative.assoc _ f] }
+end associative
+section semigroup
+@[simp, to_additive
+"Composing two additions on the left by `y` then `x`
+is equal to a addition on the left by `x + y`."]
+lemma comp_mul_left [semigroup α] (x y : α) :
+  ((*) x) ∘ ((*) y) = ((*) (x * y)) :=
+comp_assoc_left _ _ _
+@[simp, to_additive
+"Composing two additions on the right by `y` and `x`
+is equal to a addition on the right by `y + x`."]
+lemma comp_mul_right [semigroup α] (x y : α) :
+  (* x) ∘ (* y) = (* (y * x)) :=
+comp_assoc_right _ _ _
+end semigroup
+section mul_one_class
+variables {M : Type u} [mul_one_class M]
+@[to_additive]
+lemma ite_mul_one {P : Prop} [decidable P] {a b : M} :
+  ite P (a * b) 1 = ite P a 1 * ite P b 1 :=
+by { by_cases h : P; simp [h], }
+@[to_additive]
+lemma ite_one_mul {P : Prop} [decidable P] {a b : M} :
+  ite P 1 (a * b) = ite P 1 a * ite P 1 b :=
+by { by_cases h : P; simp [h], }
+@[to_additive]
+lemma eq_one_iff_eq_one_of_mul_eq_one {a b : M} (h : a * b = 1) : a = 1 ↔ b = 1 :=
+by split; { rintro rfl, simpa using h }
+@[to_additive]
+lemma one_mul_eq_id : ((*) (1 : M)) = id := funext one_mul
+@[to_additive]
+lemma mul_one_eq_id : (* (1 : M)) = id := funext mul_one
+end mul_one_class
+section comm_semigroup
+variables [comm_semigroup G]
+@[no_rsimp, to_additive]
+lemma mul_left_comm : ∀ a b c : G, a * (b * c) = b * (a * c) :=
+left_comm has_mul.mul mul_comm mul_assoc
+@[to_additive]
+lemma mul_right_comm : ∀ a b c : G, a * b * c = a * c * b :=
+right_comm has_mul.mul mul_comm mul_assoc
+@[to_additive]
+theorem mul_mul_mul_comm (a b c d : G) : (a * b) * (c * d) = (a * c) * (b * d) :=
+by simp only [mul_left_comm, mul_assoc]
+@[to_additive]
+lemma mul_rotate (a b c : G) : a * b * c = b * c * a :=
+by simp only [mul_left_comm, mul_comm]
+@[to_additive]
+lemma mul_rotate' (a b c : G) : a * (b * c) = b * (c * a) :=
+by simp only [mul_left_comm, mul_comm]
+end comm_semigroup
+section add_comm_semigroup
+variables {M : Type u} [add_comm_semigroup M]
+lemma bit0_add (a b : M) : bit0 (a + b) = bit0 a + bit0 b :=
+add_add_add_comm _ _ _ _
+lemma bit1_add [has_one M] (a b : M) : bit1 (a + b) = bit0 a + bit1 b :=
+(congr_arg (+ (1 : M)) $ bit0_add a b : _).trans (add_assoc _ _ _)
+lemma bit1_add' [has_one M] (a b : M) : bit1 (a + b) = bit1 a + bit0 b :=
+by rw [add_comm, bit1_add, add_comm]
+end add_comm_semigroup
+local attribute [simp] mul_assoc sub_eq_add_neg
+section add_monoid
+variables {M : Type u} [add_monoid M] {a b c : M}
+@[simp] lemma bit0_zero : bit0 (0 : M) = 0 := add_zero _
+@[simp] lemma bit1_zero [has_one M] : bit1 (0 : M) = 1 :=
+by rw [bit1, bit0_zero, zero_add]
+end add_monoid
+section comm_monoid
+variables {M : Type u} [comm_monoid M] {x y z : M}
+@[to_additive] lemma inv_unique (hy : x * y = 1) (hz : x * z = 1) : y = z :=
+left_inv_eq_right_inv (trans (mul_comm _ _) hy) hz
+end comm_monoid
+section left_cancel_monoid
+variables {M : Type u} [left_cancel_monoid M] {a b : M}
+@[simp, to_additive] lemma mul_right_eq_self : a * b = a ↔ b = 1 :=
+calc a * b = a ↔ a * b = a * 1 : by rw mul_one
+           ... ↔ b = 1         : mul_left_cancel_iff
+@[simp, to_additive] lemma self_eq_mul_right : a = a * b ↔ b = 1 :=
+eq_comm.trans mul_right_eq_self
+end left_cancel_monoid
+section right_cancel_monoid
+variables {M : Type u} [right_cancel_monoid M] {a b : M}
+@[simp, to_additive] lemma mul_left_eq_self : a * b = b ↔ a = 1 :=
+calc a * b = b ↔ a * b = 1 * b : by rw one_mul
+           ... ↔ a = 1         : mul_right_cancel_iff
+@[simp, to_additive] lemma self_eq_mul_left : b = a * b ↔ a = 1 :=
+eq_comm.trans mul_left_eq_self
+end right_cancel_monoid
+section has_involutive_inv
+variables [has_involutive_inv G] {a b : G}
+@[simp, to_additive]
+lemma inv_involutive : function.involutive (has_inv.inv : G → G) := inv_inv
+@[simp, to_additive]
+lemma inv_surjective : function.surjective (has_inv.inv : G → G) :=
+inv_involutive.surjective
+@[to_additive]
+lemma inv_injective : function.injective (has_inv.inv : G → G) :=
+inv_involutive.injective
+@[simp, to_additive] theorem inv_inj {a b : G} : a⁻¹ = b⁻¹ ↔ a = b := inv_injective.eq_iff
+@[to_additive]
+lemma eq_inv_of_eq_inv (h : a = b⁻¹) : b = a⁻¹ :=
+by simp [h]
+@[to_additive]
+theorem eq_inv_iff_eq_inv : a = b⁻¹ ↔ b = a⁻¹ :=
+⟨eq_inv_of_eq_inv, eq_inv_of_eq_inv⟩
+@[to_additive]
+theorem inv_eq_iff_inv_eq  : a⁻¹ = b ↔ b⁻¹ = a :=
+eq_comm.trans $ eq_inv_iff_eq_inv.trans eq_comm
+variables (G)
+@[simp, to_additive] lemma inv_comp_inv : has_inv.inv ∘ has_inv.inv = @id G :=
+inv_involutive.comp_self
+@[to_additive] lemma left_inverse_inv : left_inverse (λ a : G, a⁻¹) (λ a, a⁻¹) := inv_inv
+@[to_additive] lemma right_inverse_inv : left_inverse (λ a : G, a⁻¹) (λ a, a⁻¹) := inv_inv
+end has_involutive_inv
+section div_inv_monoid
+variables [div_inv_monoid G] {a b c : G}
+instance commutator_element {G : Type*} [group G] : has_bracket G G :=
+⟨λ g₁ g₂, g₁ * g₂ * g₁⁻¹ * g₂⁻¹⟩
+lemma commutator_element_def  {G : Type*} [group G] (g₁ g₂ : G) :
+  ⁅g₁, g₂⁆ = g₁ * g₂ * g₁⁻¹ * g₂⁻¹ := rfl
+end commutator

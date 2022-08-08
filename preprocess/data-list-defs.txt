@@ -1,0 +1,412 @@
+import data.option.defs
+import logic.basic
+import tactic.cache
+import data.rbmap.basic
+import data.rbtree.default_lt
+namespace list
+open function nat
+universes u v w x
+variables {α β γ δ ε ζ : Type*}
+instance [decidable_eq α] : has_sdiff (list α) :=
+⟨ list.diff ⟩
+def split_at : ℕ → list α → list α × list α
+| 0        a         := ([], a)
+| (succ n) []        := ([], [])
+| (succ n) (x :: xs) := let (l, r) := split_at n xs in (x :: l, r)
+def split_on_p_aux {α : Type u} (P : α → Prop) [decidable_pred P] :
+  list α → (list α → list α) → list (list α)
+| [] f       := [f []]
+| (h :: t) f :=
+  if P h then f [] :: split_on_p_aux t id
+  else split_on_p_aux t (λ l, f (h :: l))
+def split_on_p {α : Type u} (P : α → Prop) [decidable_pred P] (l : list α) : list (list α) :=
+split_on_p_aux P l id
+def split_on {α : Type u} [decidable_eq α] (a : α) (as : list α) : list (list α) :=
+as.split_on_p (=a)
+@[simp] def concat : list α → α → list α
+| []     a := [a]
+| (b::l) a := b :: concat l a
+@[simp] def head' : list α → option α
+| []       := none
+| (a :: l) := some a
+def to_array (l : list α) : array l.length α :=
+{data := λ v, l.nth_le v.1 v.2}
+@[simp] def inth [h : inhabited α] (l : list α) (n : nat) : α := (nth l n).iget
+@[simp] def modify_nth_tail (f : list α → list α) : ℕ → list α → list α
+| 0     l      := f l
+| (n+1) []     := []
+| (n+1) (a::l) := a :: modify_nth_tail n l
+@[simp] def modify_head (f : α → α) : list α → list α
+| []     := []
+| (a::l) := f a :: l
+def modify_nth (f : α → α) : ℕ → list α → list α :=
+modify_nth_tail (modify_head f)
+@[simp] def modify_last (f : α → α) : list α → list α
+| [] := []
+| [x] := [f x]
+| (x :: xs) := x :: modify_last xs
+def insert_nth (n : ℕ) (a : α) : list α → list α := modify_nth_tail (list.cons a) n
+section take'
+variable [inhabited α]
+def take' : ∀ n, list α → list α
+| 0     l := []
+| (n+1) l := l.head :: take' n l.tail
+end take'
+def take_while (p : α → Prop) [decidable_pred p] : list α → list α
+| []     := []
+| (a::l) := if p a then a :: take_while l else []
+def scanl (f : α → β → α) : α → list β → list α
+| a []     := [a]
+| a (b::l) := a :: scanl (f a b) l
+def scanr_aux (f : α → β → β) (b : β) : list α → β × list β
+| []     := (b, [])
+| (a::l) := let (b', l') := scanr_aux l in (f a b', b' :: l')
+def scanr (f : α → β → β) (b : β) (l : list α) : list β :=
+let (b', l') := scanr_aux f b l in b' :: l'
+def prod [has_mul α] [has_one α] : list α → α := foldl (*) 1
+def alternating_sum {G : Type*} [has_zero G] [has_add G] [has_neg G] : list G → G
+| [] := 0
+| (g :: []) := g
+| (g :: h :: t) := g + -h + alternating_sum t
+def alternating_prod {G : Type*} [has_one G] [has_mul G] [has_inv G] : list G → G
+| [] := 1
+| (g :: []) := g
+| (g :: h :: t) := g * h⁻¹ * alternating_prod t
+def partition_map (f : α → β ⊕ γ) : list α → list β × list γ
+| [] := ([],[])
+| (x::xs) :=
+match f x with
+| (sum.inr r) := prod.map id (cons r) $ partition_map xs
+| (sum.inl l) := prod.map (cons l) id $ partition_map xs
+end
+def find (p : α → Prop) [decidable_pred p] : list α → option α
+| []     := none
+| (a::l) := if p a then some a else find l
+def mfind {α} {m : Type u → Type v} [monad m] [alternative m] (tac : α → m punit) : list α → m α :=
+list.mfirst $ λ a, tac a $> a
+def mbfind' {m : Type u → Type v} [monad m] {α : Type u} (p : α → m (ulift bool)) :
+  list α → m (option α)
+| [] := pure none
+| (x :: xs) := do
+  ⟨px⟩ ← p x,
+  if px then pure (some x) else mbfind' xs
+section
+variables {m : Type → Type v} [monad m]
+def mbfind {α} (p : α → m bool) (xs : list α) : m (option α) :=
+xs.mbfind' (functor.map ulift.up ∘ p)
+def mall {α : Type u} (p : α → m bool) (as : list α) : m bool :=
+bnot <$> many (λ a, bnot <$> p a) as
+def mbor : list (m bool) → m bool :=
+many id
+def mband : list (m bool) → m bool :=
+mall id
+end
+def foldl_with_index_aux (f : ℕ → α → β → α) : ℕ → α → list β → α
+| _ a [] := a
+| i a (b :: l) := foldl_with_index_aux (i + 1) (f i a b) l
+def foldl_with_index (f : ℕ → α → β → α) (a : α) (l : list β) : α :=
+foldl_with_index_aux f 0 a l
+def foldr_with_index_aux (f : ℕ → α → β → β) : ℕ → β → list α → β
+| _ b [] := b
+| i b (a :: l) := f i a (foldr_with_index_aux (i + 1) b l)
+def foldr_with_index (f : ℕ → α → β → β) (b : β) (l : list α) : β :=
+foldr_with_index_aux f 0 b l
+def find_indexes (p : α → Prop) [decidable_pred p] (l : list α) : list nat :=
+foldr_with_index (λ i a is, if p a then i :: is else is) [] l
+def indexes_values (p : α → Prop) [decidable_pred p] (l : list α) : list (ℕ × α) :=
+foldr_with_index (λ i a l, if p a then (i , a) :: l else l) [] l
+def indexes_of [decidable_eq α] (a : α) : list α → list nat := find_indexes (eq a)
+section mfold_with_index
+variables {m : Type v → Type w} [monad m]
+def mfoldl_with_index {α β} (f : ℕ → β → α → m β) (b : β) (as : list α) : m β :=
+as.foldl_with_index (λ i ma b, do a ← ma, f i a b) (pure b)
+def mfoldr_with_index {α β} (f : ℕ → α → β → m β) (b : β) (as : list α) : m β :=
+as.foldr_with_index (λ i a mb, do b ← mb, f i a b) (pure b)
+end mfold_with_index
+section mmap_with_index
+variables {m : Type v → Type w} [applicative m]
+def mmap_with_index_aux {α β} (f : ℕ → α → m β) : ℕ → list α → m (list β)
+| _ [] := pure []
+| i (a :: as) := list.cons <$> f i a <*> mmap_with_index_aux (i + 1) as
+def mmap_with_index {α β} (f : ℕ → α → m β) (as : list α) : m (list β) :=
+mmap_with_index_aux f 0 as
+def mmap_with_index'_aux {α} (f : ℕ → α → m punit) : ℕ → list α → m punit
+| _ [] := pure ⟨⟩
+| i (a :: as) := f i a *> mmap_with_index'_aux (i + 1) as
+def mmap_with_index' {α} (f : ℕ → α → m punit) (as : list α) : m punit :=
+mmap_with_index'_aux f 0 as
+end mmap_with_index
+def lookmap (f : α → option α) : list α → list α
+| []     := []
+| (a::l) :=
+  match f a with
+  | some b := b :: l
+  | none   := a :: lookmap l
+  end
+def countp (p : α → Prop) [decidable_pred p] : list α → nat
+| []      := 0
+| (x::xs) := if p x then succ (countp xs) else countp xs
+def count [decidable_eq α] (a : α) : list α → nat := countp (eq a)
+def is_prefix (l₁ : list α) (l₂ : list α) : Prop := ∃ t, l₁ ++ t = l₂
+def is_suffix (l₁ : list α) (l₂ : list α) : Prop := ∃ t, t ++ l₁ = l₂
+def is_infix (l₁ : list α) (l₂ : list α) : Prop := ∃ s t, s ++ l₁ ++ t = l₂
+infix ` <+: `:50 := is_prefix
+infix ` <:+ `:50 := is_suffix
+infix ` <:+: `:50 := is_infix
+@[simp] def inits : list α → list (list α)
+| []     := [[]]
+| (a::l) := [] :: map (λt, a::t) (inits l)
+@[simp] def tails : list α → list (list α)
+| []     := [[]]
+| (a::l) := (a::l) :: tails l
+def sublists'_aux : list α → (list α → list β) → list (list β) → list (list β)
+| []     f r := f [] :: r
+| (a::l) f r := sublists'_aux l f (sublists'_aux l (f ∘ cons a) r)
+def sublists' (l : list α) : list (list α) :=
+sublists'_aux l id []
+def sublists_aux : list α → (list α → list β → list β) → list β
+| []     f := []
+| (a::l) f := f [a] (sublists_aux l (λys r, f ys (f (a :: ys) r)))
+def sublists (l : list α) : list (list α) :=
+[] :: sublists_aux l cons
+def sublists_aux₁ : list α → (list α → list β) → list β
+| []     f := []
+| (a::l) f := f [a] ++ sublists_aux₁ l (λys, f ys ++ f (a :: ys))
+section forall₂
+variables {r : α → β → Prop} {p : γ → δ → Prop}
+inductive forall₂ (R : α → β → Prop) : list α → list β → Prop
+| nil : forall₂ [] []
+| cons {a b l₁ l₂} : R a b → forall₂ l₁ l₂ → forall₂ (a::l₁) (b::l₂)
+attribute [simp] forall₂.nil
+end forall₂
+@[simp] def all₂ (p : α → Prop) : list α → Prop
+| []        := true
+| (x :: []) := p x
+| (x :: l)  := p x ∧ all₂ l
+def transpose_aux : list α → list (list α) → list (list α)
+| []     ls      := ls
+| (a::i) []      := [a] :: transpose_aux i []
+| (a::i) (l::ls) := (a::l) :: transpose_aux i ls
+def transpose : list (list α) → list (list α)
+| []      := []
+| (l::ls) := transpose_aux l (transpose ls)
+def sections : list (list α) → list (list α)
+| []     := [[]]
+| (l::L) := bind (sections L) $ λ s, map (λ a, a::s) l
+section permutations
+def permutations_aux2 (t : α) (ts : list α) (r : list β) : list α → (list α → β) → list α × list β
+| []      f := (ts, r)
+| (y::ys) f := let (us, zs) := permutations_aux2 ys (λx : list α, f (y::x)) in
+               (y :: us, f (t :: y :: us) :: zs)
+private def meas : (Σ'_:list α, list α) → ℕ × ℕ | ⟨l, i⟩ := (length l + length i, length l)
+local infix ` ≺ `:50 := inv_image (prod.lex (<) (<)) meas
+@[elab_as_eliminator] def permutations_aux.rec {C : list α → list α → Sort v}
+  (H0 : ∀ is, C [] is)
+  (H1 : ∀ t ts is, C ts (t::is) → C is [] → C (t::ts) is) : ∀ l₁ l₂, C l₁ l₂
+| []      is := H0 is
+| (t::ts) is :=
+  have h1 : ⟨ts, t :: is⟩ ≺ ⟨t :: ts, is⟩, from
+    show prod.lex _ _ (succ (length ts + length is), length ts) (succ (length ts) + length is,
+      length (t :: ts)),
+    by rw nat.succ_add; exact prod.lex.right _ (lt_succ_self _),
+  have h2 : ⟨is, []⟩ ≺ ⟨t :: ts, is⟩, from prod.lex.left _ _ (nat.lt_add_of_pos_left (succ_pos _)),
+  H1 t ts is (permutations_aux.rec ts (t::is)) (permutations_aux.rec is [])
+using_well_founded
+{ dec_tac := tactic.assumption,
+  rel_tac := λ _ _, `[exact ⟨(≺), @inv_image.wf _ _ _ meas (prod.lex_wf lt_wf lt_wf)⟩] }
+def permutations_aux : list α → list α → list (list α) :=
+@@permutations_aux.rec (λ _ _, list (list α)) (λ is, [])
+  (λ t ts is IH1 IH2, foldr (λy r, (permutations_aux2 t ts r y id).2) IH1 (is :: IH2))
+def permutations (l : list α) : list (list α) :=
+l :: permutations_aux l []
+@[simp] def permutations'_aux (t : α) : list α → list (list α)
+| []      := [[t]]
+| (y::ys) := (t :: y :: ys) :: (permutations'_aux ys).map (cons y)
+@[simp] def permutations' : list α → list (list α)
+| [] := [[]]
+| (t::ts) := (permutations' ts).bind $ permutations'_aux t
+end permutations
+def erasep (p : α → Prop) [decidable_pred p] : list α → list α
+| []     := []
+| (a::l) := if p a then l else a :: erasep l
+def extractp (p : α → Prop) [decidable_pred p] : list α → option α × list α
+| []     := (none, [])
+| (a::l) := if p a then (some a, l) else
+  let (a', l') := extractp l in (a', a :: l')
+def revzip (l : list α) : list (α × α) := zip l l.reverse
+def product (l₁ : list α) (l₂ : list β) : list (α × β) :=
+l₁.bind $ λ a, l₂.map $ prod.mk a
+protected def sigma {σ : α → Type*} (l₁ : list α) (l₂ : Π a, list (σ a)) : list (Σ a, σ a) :=
+l₁.bind $ λ a, (l₂ a).map $ sigma.mk a
+def of_fn_aux {n} (f : fin n → α) : ∀ m, m ≤ n → list α → list α
+| 0        h l := l
+| (succ m) h l := of_fn_aux m (le_of_lt h) (f ⟨m, h⟩ :: l)
+def of_fn {n} (f : fin n → α) : list α :=
+of_fn_aux f n (le_refl _) []
+def of_fn_nth_val {n} (f : fin n → α) (i : ℕ) : option α :=
+if h : i < n then some (f ⟨i, h⟩) else none
+def disjoint (l₁ l₂ : list α) : Prop := ∀ ⦃a⦄, a ∈ l₁ → a ∈ l₂ → false
+section pairwise
+variables (R : α → α → Prop)
+inductive pairwise : list α → Prop
+| nil : pairwise []
+| cons : ∀ {a : α} {l : list α}, (∀ a' ∈ l, R a a') → pairwise l → pairwise (a::l)
+variables {R}
+@[simp] theorem pairwise_cons {a : α} {l : list α} :
+  pairwise R (a::l) ↔ (∀ a' ∈ l, R a a') ∧ pairwise R l :=
+⟨λ p, by cases p with a l n p; exact ⟨n, p⟩, λ ⟨n, p⟩, p.cons n⟩
+attribute [simp] pairwise.nil
+instance decidable_pairwise [decidable_rel R] (l : list α) : decidable (pairwise R l) :=
+by induction l with hd tl ih; [exact is_true pairwise.nil,
+  exactI decidable_of_iff' _ pairwise_cons]
+end pairwise
+def pw_filter (R : α → α → Prop) [decidable_rel R] : list α → list α
+| []        := []
+| (x :: xs) := let IH := pw_filter xs in if ∀ y ∈ IH, R x y then x :: IH else IH
+section chain
+variable (R : α → α → Prop)
+inductive chain : α → list α → Prop
+| nil {a : α} : chain a []
+| cons : ∀ {a b : α} {l : list α}, R a b → chain b l → chain a (b::l)
+def chain' : list α → Prop
+| [] := true
+| (a :: l) := chain R a l
+variable {R}
+@[simp] theorem chain_cons {a b : α} {l : list α} :
+  chain R a (b::l) ↔ R a b ∧ chain R b l :=
+⟨λ p, by cases p with _ a b l n p; exact ⟨n, p⟩, λ ⟨n, p⟩, p.cons n⟩
+attribute [simp] chain.nil
+instance decidable_chain [decidable_rel R] (a : α) (l : list α) : decidable (chain R a l) :=
+by induction l generalizing a; simp only [chain.nil, chain_cons]; resetI; apply_instance
+instance decidable_chain' [decidable_rel R] (l : list α) : decidable (chain' R l) :=
+by cases l; dunfold chain'; apply_instance
+end chain
+def nodup : list α → Prop := pairwise (≠)
+instance nodup_decidable [decidable_eq α] : ∀ l : list α, decidable (nodup l) :=
+list.decidable_pairwise
+def dedup [decidable_eq α] : list α → list α := pw_filter (≠)
+def destutter' (R : α → α → Prop) [decidable_rel R] : α → list α → list α
+| a [] := [a]
+| a (h :: l) := if R a h then a :: destutter' h l else destutter' a l
+def destutter (R : α → α → Prop) [decidable_rel R] : list α → list α
+| (h :: l) := destutter' R h l
+| [] := []
+@[simp] def range' : ℕ → ℕ → list ℕ
+| s 0     := []
+| s (n+1) := s :: range' (s+1) n
+def reduce_option {α} : list (option α) → list α :=
+list.filter_map id
+@[simp] def ilast' {α} : α → list α → α
+| a []     := a
+| a (b::l) := ilast' b l
+@[simp] def last' {α} : list α → option α
+| []     := none
+| [a]    := some a
+| (b::l) := last' l
+def rotate (l : list α) (n : ℕ) : list α :=
+let (l₁, l₂) := list.split_at (n % l.length) l in l₂ ++ l₁
+def rotate' : list α → ℕ → list α
+| []     n     := []
+| l      0     := l
+| (a::l) (n+1) := rotate' (l ++ [a]) n
+section choose
+variables (p : α → Prop) [decidable_pred p] (l : list α)
+def choose_x : Π l : list α, Π hp : (∃ a, a ∈ l ∧ p a), { a // a ∈ l ∧ p a }
+| [] hp := false.elim (exists.elim hp (assume a h, not_mem_nil a h.left))
+| (l :: ls) hp := if pl : p l then ⟨l, ⟨or.inl rfl, pl⟩⟩ else
+let ⟨a, ⟨a_mem_ls, pa⟩⟩ := choose_x ls (hp.imp
+  (λ b ⟨o, h₂⟩, ⟨o.resolve_left (λ e, pl $ e ▸ h₂), h₂⟩)) in
+⟨a, ⟨or.inr a_mem_ls, pa⟩⟩
+def choose (hp : ∃ a, a ∈ l ∧ p a) : α := choose_x p l hp
+end choose
+def mmap_filter {m : Type → Type v} [monad m] {α β} (f : α → m (option β)) :
+  list α → m (list β)
+| []       := return []
+| (h :: t) := do b ← f h, t' ← t.mmap_filter, return $
+  match b with none := t' | (some x) := x::t' end
+def mmap_upper_triangle {m} [monad m] {α β : Type u} (f : α → α → m β) : list α → m (list β)
+| [] := return []
+| (h::t) := do v ← f h h, l ← t.mmap (f h), t ← t.mmap_upper_triangle, return $ (v::l) ++ t
+def mmap'_diag {m} [monad m] {α} (f : α → α → m unit) : list α → m unit
+| [] := return ()
+| (h::t) := f h h >> t.mmap' (f h) >> t.mmap'_diag
+protected def traverse {F : Type u → Type v} [applicative F] {α β : Type*} (f : α → F β) :
+  list α → F (list β)
+| [] := pure []
+| (x :: xs) := list.cons <$> f x <*> traverse xs
+def get_rest [decidable_eq α] : list α → list α → option (list α)
+| l      []      := some l
+| []     _       := none
+| (x::l) (y::l₁) := if x = y then get_rest l l₁ else none
+def slice {α} : ℕ → ℕ → list α → list α
+| 0 n xs := xs.drop n
+| (succ n) m [] := []
+| (succ n) m (x :: xs) := x :: slice n m xs
+@[simp] def map₂_left' (f : α → option β → γ) : list α → list β → (list γ × list β)
+| [] bs := ([], bs)
+| (a :: as) [] :=
+  ((a :: as).map (λ a, f a none), [])
+| (a :: as) (b :: bs) :=
+  let rec := map₂_left' as bs in
+  (f a (some b) :: rec.fst, rec.snd)
+def map₂_right' (f : option α → β → γ) (as : list α) (bs : list β) : (list γ × list α) :=
+map₂_left' (flip f) bs as
+def zip_left' : list α → list β → list (α × option β) × list β :=
+map₂_left' prod.mk
+def zip_right' : list α → list β → list (option α × β) × list α :=
+map₂_right' prod.mk
+@[simp] def map₂_left (f : α → option β → γ) : list α → list β → list γ
+| [] _ := []
+| (a :: as) [] := (a :: as).map (λ a, f a none)
+| (a :: as) (b :: bs) := f a (some b) :: map₂_left as bs
+def map₂_right (f : option α → β → γ) (as : list α) (bs : list β) :
+  list γ :=
+map₂_left (flip f) bs as
+def zip_left : list α → list β → list (α × option β) :=
+map₂_left prod.mk
+def zip_right : list α → list β → list (option α × β) :=
+map₂_right prod.mk
+def all_some : list (option α) → option (list α)
+| [] := some []
+| (some a :: as) := cons a <$> all_some as
+| (none :: as) := none
+def fill_nones {α} : list (option α) → list α → list α
+| [] _ := []
+| (some a :: as) as' := a :: fill_nones as as'
+| (none :: as) [] := as.reduce_option
+| (none :: as) (a :: as') := a :: fill_nones as as'
+def take_list {α} : list α → list ℕ → list (list α) × list α
+| xs [] := ([], xs)
+| xs (n :: ns) :=
+  let ⟨xs₁, xs₂⟩ := xs.split_at n in
+  let ⟨xss, rest⟩ := take_list xs₂ ns in
+  (xs₁ :: xss, rest)
+def to_rbmap {α : Type*} : list α → rbmap ℕ α :=
+foldl_with_index (λ i mapp a, mapp.insert i a) (mk_rbmap ℕ α)
+def to_chunks_aux {α} (n : ℕ) : list α → ℕ → list α × list (list α)
+| [] i := ([], [])
+| (x::xs) 0 := let (l, L) := to_chunks_aux xs n in ([], (x::l)::L)
+| (x::xs) (i+1) := let (l, L) := to_chunks_aux xs i in (x::l, L)
+def to_chunks {α} : ℕ → list α → list (list α)
+| _ [] := []
+| 0 xs := [xs]
+| (n+1) (x::xs) := let (l, L) := to_chunks_aux n xs n in (x::l)::L
+meta def map_async_chunked {α β} (f : α → β) (xs : list α) (chunk_size := 1024) : list β :=
+((xs.to_chunks chunk_size).map (λ xs, task.delay (λ _, list.map f xs))).bind task.get
+def zip_with3 (f : α → β → γ → δ) : list α → list β → list γ → list δ
+| (x::xs) (y::ys) (z::zs) := f x y z :: zip_with3 xs ys zs
+| _       _       _       := []
+def zip_with4 (f : α → β → γ → δ → ε) : list α → list β → list γ → list δ → list ε
+| (x::xs) (y::ys) (z::zs) (u::us) := f x y z u :: zip_with4 xs ys zs us
+| _       _       _       _       := []
+def zip_with5 (f : α → β → γ → δ → ε → ζ) : list α → list β → list γ → list δ → list ε → list ζ
+| (x::xs) (y::ys) (z::zs) (u::us) (v::vs) := f x y z u v :: zip_with5 xs ys zs us vs
+| _       _       _       _       _       := []
+def map_with_prefix_suffix_aux {α β} (f : list α → α → list α → β) : list α → list α → list β
+| prev [] := []
+| prev (h::t) := f prev h t :: map_with_prefix_suffix_aux (prev.concat h) t
+def map_with_prefix_suffix {α β} (f : list α → α → list α → β) (l : list α) : list β :=
+map_with_prefix_suffix_aux f [] l
+def map_with_complement {α β} (f : α → list α → β) : list α → list β :=
+map_with_prefix_suffix $ λ pref a suff, f a (pref ++ suff)
+end list

@@ -1,0 +1,49 @@
+import linear_algebra.matrix.adjugate
+import ring_theory.matrix_algebra
+import ring_theory.polynomial_algebra
+import tactic.apply_fun
+import tactic.squeeze
+noncomputable theory
+universes u v w
+open polynomial matrix
+open_locale big_operators polynomial
+variables {R : Type u} [comm_ring R]
+variables {n : Type w} [decidable_eq n] [fintype n]
+open finset
+def charmatrix (M : matrix n n R) : matrix n n R[X] :=
+matrix.scalar n (X : R[X]) - (C : R →+* R[X]).map_matrix M
+@[simp] lemma charmatrix_apply_eq (M : matrix n n R) (i : n) :
+  charmatrix M i i = (X : R[X]) - C (M i i) :=
+by simp only [charmatrix, sub_left_inj, pi.sub_apply, scalar_apply_eq,
+  ring_hom.map_matrix_apply, map_apply, dmatrix.sub_apply]
+@[simp] lemma charmatrix_apply_ne (M : matrix n n R) (i j : n) (h : i ≠ j) :
+  charmatrix M i j = - C (M i j) :=
+by simp only [charmatrix, pi.sub_apply, scalar_apply_ne _ _ _ h, zero_sub,
+  ring_hom.map_matrix_apply, map_apply, dmatrix.sub_apply]
+lemma mat_poly_equiv_charmatrix (M : matrix n n R) :
+  mat_poly_equiv (charmatrix M) = X - C M :=
+begin
+  ext k i j,
+  simp only [mat_poly_equiv_coeff_apply, coeff_sub, pi.sub_apply],
+  by_cases h : i = j,
+  { subst h, rw [charmatrix_apply_eq, coeff_sub],
+    simp only [coeff_X, coeff_C],
+    split_ifs; simp, },
+  { rw [charmatrix_apply_ne _ _ _ h, coeff_X, coeff_neg, coeff_C, coeff_C],
+    split_ifs; simp [h], }
+end
+lemma charmatrix_reindex {m : Type v} [decidable_eq m] [fintype m] (e : n ≃ m)
+  (M : matrix n n R) : charmatrix (reindex e e M) = reindex e e (charmatrix M) :=
+begin
+  ext i j x,
+  by_cases h : i = j,
+  all_goals { simp [h] }
+end
+def matrix.charpoly (M : matrix n n R) : R[X] :=
+(charmatrix M).det
+lemma matrix.charpoly_reindex {m : Type v} [decidable_eq m] [fintype m] (e : n ≃ m)
+  (M : matrix n n R) : (reindex e e M).charpoly = M.charpoly :=
+begin
+  unfold matrix.charpoly,
+  rw [charmatrix_reindex, matrix.det_reindex_self]
+end

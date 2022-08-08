@@ -1,0 +1,9 @@
+import analysis.special_functions.log.basic
+import analysis.special_functions.pow
+open set filter function
+open_locale topological_space
+noncomputable theory
+namespace real
+variables {x y : ℝ}
+lemma log_mul_self_monotone_on : monotone_on (λ x : ℝ, log x * x) {x | 1 ≤ x} :=
+begin

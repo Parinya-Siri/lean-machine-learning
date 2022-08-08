@@ -1,0 +1,9 @@
+import algebra.field.basic
+import algebra.ring.opposite
+variables (α : Type*)
+namespace mul_opposite
+instance [division_ring α] : division_ring αᵐᵒᵖ :=
+{ .. mul_opposite.group_with_zero α, .. mul_opposite.ring α }
+instance [field α] : field αᵐᵒᵖ :=
+{ .. mul_opposite.division_ring α, .. mul_opposite.comm_ring α }
+end mul_opposite

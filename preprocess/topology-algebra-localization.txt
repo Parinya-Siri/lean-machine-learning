@@ -1,0 +1,9 @@
+import ring_theory.localization.basic
+import topology.algebra.ring
+variables {R : Type*} [comm_ring R] [topological_space R] {M : submonoid R}
+def localization.ring_topology : ring_topology (localization M) :=
+ring_topology.coinduced (localization.monoid_of M).to_fun
+instance : topological_space (localization M) :=
+localization.ring_topology.to_topological_space
+instance : topological_ring (localization M) :=
+localization.ring_topology.to_topological_ring

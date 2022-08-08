@@ -1,0 +1,10 @@
+import data.complex.basic
+import data.real.cardinality
+open cardinal set
+open_locale cardinal
+@[simp] theorem mk_complex : #ℂ = 𝔠 :=
+by rw [mk_congr complex.equiv_real_prod, mk_prod, lift_id, mk_real, continuum_mul_self]
+@[simp] lemma mk_univ_complex : #(set.univ : set ℂ) = 𝔠 :=
+by rw [mk_univ, mk_complex]
+lemma not_countable_complex : ¬ (set.univ : set ℂ).countable :=
+by { rw [← mk_set_le_aleph_0, not_le, mk_univ_complex], apply cantor }

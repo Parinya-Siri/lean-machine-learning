@@ -1,0 +1,50 @@
+import algebra.star.basic
+import analysis.special_functions.pow
+universes u
+@[nolint has_inhabited_instance]
+structure is_CHSH_tuple {R} [monoid R] [star_semigroup R] (A₀ A₁ B₀ B₁ : R) :=
+(A₀_inv : A₀^2 = 1) (A₁_inv : A₁^2 = 1) (B₀_inv : B₀^2 = 1) (B₁_inv : B₁^2 = 1)
+(A₀_sa : star A₀ = A₀) (A₁_sa : star A₁ = A₁) (B₀_sa : star B₀ = B₀) (B₁_sa : star B₁ = B₁)
+(A₀B₀_commutes : A₀ * B₀ = B₀ * A₀)
+(A₀B₁_commutes : A₀ * B₁ = B₁ * A₀)
+(A₁B₀_commutes : A₁ * B₀ = B₀ * A₁)
+(A₁B₁_commutes : A₁ * B₁ = B₁ * A₁)
+variables {R : Type u}
+lemma CHSH_id [comm_ring R] {A₀ A₁ B₀ B₁ : R}
+  (A₀_inv : A₀^2 = 1) (A₁_inv : A₁^2 = 1) (B₀_inv : B₀^2 = 1) (B₁_inv : B₁^2 = 1) :
+   (2 - A₀ * B₀ - A₀ * B₁ - A₁ * B₀ + A₁ * B₁) *
+      (2 - A₀ * B₀ - A₀ * B₁ - A₁ * B₀ + A₁ * B₁) =
+      4 * (2 - A₀ * B₀ - A₀ * B₁ - A₁ * B₀ + A₁ * B₁) :=
+lemma CHSH_inequality_of_comm
+  [ordered_comm_ring R] [star_ordered_ring R] [algebra ℝ R] [ordered_smul ℝ R]
+  (A₀ A₁ B₀ B₁ : R) (T : is_CHSH_tuple A₀ A₁ B₀ B₁) :
+  A₀ * B₀ + A₀ * B₁ + A₁ * B₀ - A₁ * B₁ ≤ 2 :=
+begin
+  let P := (2 - A₀ * B₀ - A₀ * B₁ - A₁ * B₀ + A₁ * B₁),
+  have i₁ : 0 ≤ P,
+  { have idem : P * P = 4 * P := CHSH_id T.A₀_inv T.A₁_inv T.B₀_inv T.B₁_inv,
+    have idem' : P = (1 / 4 : ℝ) • (P * P),
+    { have h : 4 * P = (4 : ℝ) • P := by simp [algebra.smul_def],
+      rw [idem, h, ←mul_smul],
+      norm_num, },
+    have sa : star P = P,
+    { dsimp [P],
+      simp only [star_add, star_sub, star_mul, star_bit0, star_one,
+        T.A₀_sa, T.A₁_sa, T.B₀_sa, T.B₁_sa, mul_comm B₀, mul_comm B₁], },
+    rw idem',
+    conv_rhs { congr, skip, congr, rw ←sa, },
+    convert smul_le_smul_of_nonneg (star_mul_self_nonneg : 0 ≤ star P * P) _,
+    { simp, },
+    { apply_instance, },
+    { norm_num, } },
+  apply le_of_sub_nonneg,
+  simpa only [sub_add_eq_sub_sub, ←sub_add] using i₁,
+end
+local notation `√2` := (real.sqrt 2 : ℝ)
+namespace tsirelson_inequality
+lemma tsirelson_inequality
+  [ordered_ring R] [star_ordered_ring R]
+  [algebra ℝ R] [ordered_smul ℝ R] [star_module ℝ R]
+  (A₀ A₁ B₀ B₁ : R) (T : is_CHSH_tuple A₀ A₁ B₀ B₁) :
+  A₀ * B₀ + A₀ * B₁ + A₁ * B₀ - A₁ * B₁ ≤ √2^3 • 1 :=
+begin

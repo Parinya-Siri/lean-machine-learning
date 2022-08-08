@@ -1,0 +1,8 @@
+import data.semiquot
+import data.rat.floor
+def int.shift2 (a b : ℕ) : ℤ → ℕ × ℕ
+| (int.of_nat e) := (a.shiftl e, b)
+| -[1+ e] := (a, b.shiftl e.succ)
+namespace fp
+@[derive inhabited]
+inductive rmode

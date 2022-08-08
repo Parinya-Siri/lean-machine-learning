@@ -1,0 +1,20 @@
+import measure_theory.measure.regular
+import measure_theory.function.simple_func_dense_lp
+import topology.urysohns_lemma
+import measure_theory.function.l1_space
+open_locale ennreal nnreal topological_space bounded_continuous_function
+open measure_theory topological_space continuous_map
+variables {α : Type*} [measurable_space α] [topological_space α] [normal_space α] [borel_space α]
+variables (E : Type*) [normed_group E]
+  [second_countable_topology_either α E]
+variables {p : ℝ≥0∞} [_i : fact (1 ≤ p)] (hp : p ≠ ∞) (μ : measure α)
+include _i hp
+namespace measure_theory.Lp
+variables [normed_space ℝ E]
+lemma bounded_continuous_function_dense [μ.weakly_regular] :
+  (bounded_continuous_function E p μ).topological_closure = ⊤ :=
+begin
+  have hp₀ : 0 < p := lt_of_lt_of_le ennreal.zero_lt_one _i.elim,
+  have hp₀' : 0 ≤ 1 / p.to_real := div_nonneg zero_le_one ennreal.to_real_nonneg,
+  have hp₀'' : 0 < p.to_real,
+  { simpa [← ennreal.to_real_lt_to_real ennreal.zero_ne_top hp] using hp₀ },

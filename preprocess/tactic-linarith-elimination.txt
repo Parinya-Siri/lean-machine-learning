@@ -1,0 +1,114 @@
+import tactic.linarith.datatypes
+open native
+namespace linarith
+@[derive inhabited]
+inductive comp_source : Type
+| assump : ℕ → comp_source
+| add : comp_source → comp_source → comp_source
+| scale : ℕ → comp_source → comp_source
+meta def comp_source.flatten : comp_source → rb_map ℕ ℕ
+| (comp_source.assump n) := mk_rb_map.insert n 1
+| (comp_source.add c1 c2) := (comp_source.flatten c1).add (comp_source.flatten c2)
+| (comp_source.scale n c) := (comp_source.flatten c).map (λ v, v * n)
+def comp_source.to_string : comp_source → string
+| (comp_source.assump e) := to_string e
+| (comp_source.add c1 c2) := comp_source.to_string c1 ++ " + " ++ comp_source.to_string c2
+| (comp_source.scale n c) := to_string n ++ " * " ++ comp_source.to_string c
+meta instance comp_source.has_to_format : has_to_format comp_source :=
+⟨λ a, comp_source.to_string a⟩
+meta structure pcomp : Type :=
+(c : comp)
+(src : comp_source)
+(history : rb_set ℕ)
+(effective : rb_set ℕ)
+(implicit : rb_set ℕ)
+(vars : rb_set ℕ)
+meta def pcomp.maybe_minimal (c : pcomp) (elimed_ge : ℕ) : bool :=
+c.history.size ≤ 1 + ((c.implicit.filter (≥ elimed_ge)).union c.effective).size
+meta def pcomp.cmp (p1 p2 : pcomp) : ordering :=
+p1.c.cmp p2.c
+meta def pcomp.scale (c : pcomp) (n : ℕ) : pcomp :=
+{c with c := c.c.scale n, src := c.src.scale n}
+meta def pcomp.add (c1 c2 : pcomp) (elim_var : ℕ) : pcomp :=
+let c := c1.c.add c2.c,
+    src := c1.src.add c2.src,
+    history := c1.history.union c2.history,
+    vars := native.rb_set.of_list c.vars,
+    effective := (c1.effective.union c2.effective).insert elim_var,
+    implicit := ((c1.vars.union c2.vars).sdiff vars).erase elim_var in
+⟨c, src, history, effective, implicit, vars⟩
+meta def pcomp.assump (c : comp) (n : ℕ) : pcomp :=
+{ c := c,
+  src := comp_source.assump n,
+  history := mk_rb_set.insert n,
+  effective := mk_rb_set,
+  implicit := mk_rb_set,
+  vars := rb_set.of_list c.vars }
+meta instance pcomp.to_format : has_to_format pcomp :=
+⟨λ p, to_fmt p.c.coeffs ++ to_string p.c.str ++ "0"⟩
+meta def mk_pcomp_set : rb_set pcomp :=
+rb_map.mk_core unit pcomp.cmp
+meta def elim_var (c1 c2 : comp) (a : ℕ) : option (ℕ × ℕ) :=
+let v1 := c1.coeff_of a,
+    v2 := c2.coeff_of a in
+if v1 * v2 < 0 then
+  let vlcm :=  nat.lcm v1.nat_abs v2.nat_abs,
+      v1' := vlcm / v1.nat_abs,
+      v2' := vlcm / v2.nat_abs in
+  some ⟨v1', v2'⟩
+else none
+meta def pelim_var (p1 p2 : pcomp) (a : ℕ) : option pcomp :=
+do (n1, n2) ← elim_var p1.c p2.c a,
+   return $ (p1.scale n1).add (p2.scale n2) a
+meta def pcomp.is_contr (p : pcomp) : bool := p.c.is_contr
+meta def elim_with_set (a : ℕ) (p : pcomp) (comps : rb_set pcomp) : rb_set pcomp :=
+comps.fold mk_pcomp_set $ λ pc s,
+match pelim_var p pc a with
+| some pc := if pc.maybe_minimal a then s.insert pc else s
+| none := s
+end
+meta structure linarith_structure : Type :=
+(max_var : ℕ)
+(comps : rb_set pcomp)
+@[reducible, derive [monad, monad_except pcomp]] meta def linarith_monad : Type → Type :=
+state_t linarith_structure (except_t pcomp id)
+meta def get_max_var : linarith_monad ℕ :=
+linarith_structure.max_var <$> get
+meta def get_comps : linarith_monad (rb_set pcomp) :=
+linarith_structure.comps <$> get
+meta def validate : linarith_monad unit :=
+do ⟨_, comps⟩ ← get,
+match comps.to_list.find (λ p : pcomp, p.is_contr) with
+| none := return ()
+| some c := throw c
+end
+meta def update (max_var : ℕ) (comps : rb_set pcomp) : linarith_monad unit :=
+state_t.put ⟨max_var, comps⟩ >> validate
+meta def split_set_by_var_sign (a : ℕ) (comps : rb_set pcomp) :
+  rb_set pcomp × rb_set pcomp × rb_set pcomp :=
+comps.fold ⟨mk_pcomp_set, mk_pcomp_set, mk_pcomp_set⟩ $ λ pc ⟨pos, neg, not_present⟩,
+  let n := pc.c.coeff_of a in
+  if n > 0 then ⟨pos.insert pc, neg, not_present⟩
+  else if n < 0 then ⟨pos, neg.insert pc, not_present⟩
+  else ⟨pos, neg, not_present.insert pc⟩
+meta def monad.elim_var (a : ℕ) : linarith_monad unit :=
+do vs ← get_max_var,
+   when (a ≤ vs) $
+do ⟨pos, neg, not_present⟩ ← split_set_by_var_sign a <$> get_comps,
+   let cs' := pos.fold not_present (λ p s, s.union (elim_with_set a p neg)),
+   update (vs - 1) cs'
+meta def elim_all_vars : linarith_monad unit :=
+do mv ← get_max_var,
+   (list.range $ mv + 1).reverse.mmap' monad.elim_var
+meta def mk_linarith_structure (hyps : list comp) (max_var : ℕ) : linarith_structure :=
+let pcomp_list : list pcomp := hyps.enum.map $ λ ⟨n, cmp⟩, pcomp.assump cmp n,
+    pcomp_set := rb_set.of_list_core mk_pcomp_set pcomp_list in
+⟨max_var, pcomp_set⟩
+meta def fourier_motzkin.produce_certificate : certificate_oracle :=
+λ hyps max_var,
+let state := mk_linarith_structure hyps max_var in
+match except_t.run (state_t.run (validate >> elim_all_vars) state) with
+| (except.ok (a, _)) := tactic.failed
+| (except.error contr) := return contr.src.flatten
+end
+end linarith

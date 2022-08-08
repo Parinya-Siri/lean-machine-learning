@@ -1,0 +1,34 @@
+import combinatorics.quiver.subquiver
+import combinatorics.quiver.path
+universes v u
+namespace quiver
+@[nolint has_inhabited_instance]
+def symmetrify (V) : Type u := V
+instance symmetrify_quiver (V : Type u) [quiver V] : quiver (symmetrify V) :=
+⟨λ a b : V, (a ⟶ b) ⊕ (b ⟶ a)⟩
+variables (V : Type u) [quiver.{v+1} V]
+class has_reverse :=
+(reverse' : Π {a b : V}, (a ⟶ b) → (b ⟶ a))
+instance : has_reverse (symmetrify V) := ⟨λ a b e, e.swap⟩
+variables {V}
+def reverse [has_reverse V] {a b : V} : (a ⟶ b) → (b ⟶ a) := has_reverse.reverse'
+def path.reverse [has_reverse V] {a : V} : Π {b}, path a b → path b a
+| a path.nil := path.nil
+| b (path.cons p e) := (reverse e).to_path.comp p.reverse
+variables (V)
+def zigzag_setoid : setoid V :=
+⟨λ a b, nonempty (@path (symmetrify V) _ a b),
+ λ a, ⟨path.nil⟩,
+ λ a b ⟨p⟩, ⟨p.reverse⟩,
+ λ a b c ⟨p⟩ ⟨q⟩, ⟨p.comp q⟩⟩
+def weakly_connected_component : Type* := quotient (zigzag_setoid V)
+namespace weakly_connected_component
+variable {V}
+protected def mk : V → weakly_connected_component V := quotient.mk'
+instance : has_coe_t V (weakly_connected_component V) := ⟨weakly_connected_component.mk⟩
+instance [inhabited V] : inhabited (weakly_connected_component V) := ⟨show V, from default⟩
+protected lemma eq (a b : V) :
+  (a : weakly_connected_component V) = b ↔ nonempty (@path (symmetrify V) _ a b) :=
+quotient.eq'
+end weakly_connected_component
+variable {V}

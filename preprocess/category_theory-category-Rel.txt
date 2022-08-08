@@ -1,0 +1,10 @@
+import category_theory.category.basic
+namespace category_theory
+universe u
+def Rel := Type u
+instance Rel.inhabited : inhabited Rel := by unfold Rel; apply_instance
+instance rel : large_category Rel :=
+{ hom  := λ X Y, X → Y → Prop,
+  id   := λ X, λ x y, x = y,
+  comp := λ X Y Z f g x z, ∃ y, f x y ∧ g y z }
+end category_theory

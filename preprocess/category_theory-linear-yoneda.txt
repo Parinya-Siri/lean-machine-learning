@@ -1,0 +1,24 @@
+import algebra.category.Module.basic
+import category_theory.linear
+import category_theory.preadditive.additive_functor
+import category_theory.preadditive.yoneda
+universes w v u
+open opposite
+namespace category_theory
+variables (R : Type w) [ring R] (C : Type u) [category.{v} C] [preadditive C] [linear R C]
+@[simps]
+def linear_yoneda : C ⥤ Cᵒᵖ ⥤ Module R :=
+{ obj := λ X,
+  { obj := λ Y, Module.of R (unop Y ⟶ X),
+    map := λ Y Y' f, linear.left_comp R _ f.unop,
+    map_comp' := λ _ _ _ f g, begin ext, dsimp, erw [category.assoc] end,
+    map_id' := λ Y, begin ext, dsimp, erw [category.id_comp] end },
+  map := λ X X' f, { app := λ Y, linear.right_comp R _ f },
+@[simps]
+def linear_coyoneda : Cᵒᵖ ⥤ C ⥤ Module R :=
+{ obj := λ Y,
+  { obj := λ X, Module.of R (unop Y ⟶ X),
+    map := λ Y Y', linear.right_comp _ _,
+    map_id' := λ Y, by { ext, exact category.comp_id _ },
+    map_comp' := λ _ _ _ f g, by { ext, exact eq.symm (category.assoc _ _ _) } },
+  map := λ Y Y' f, { app := λ X, linear.left_comp _ _ f.unop },

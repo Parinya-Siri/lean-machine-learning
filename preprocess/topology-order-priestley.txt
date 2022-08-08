@@ -1,0 +1,27 @@
+import order.upper_lower
+import topology.separation
+open set
+variables {α : Type*}
+class priestley_space (α : Type*) [preorder α] [topological_space α] :=
+(priestley {x y : α} : ¬ x ≤ y → ∃ U : set α, is_clopen U ∧ is_upper_set U ∧ x ∈ U ∧ y ∉ U)
+variables [topological_space α]
+section preorder
+variables [preorder α] [priestley_space α] {x y : α}
+lemma exists_clopen_upper_of_not_le :
+  ¬ x ≤ y → ∃ U : set α, is_clopen U ∧ is_upper_set U ∧ x ∈ U ∧ y ∉ U :=
+priestley_space.priestley
+lemma exists_clopen_lower_of_not_le (h : ¬ x ≤ y) :
+  ∃ U : set α, is_clopen U ∧ is_lower_set U ∧ x ∉ U ∧ y ∈ U :=
+let ⟨U, hU, hU', hx, hy⟩ := exists_clopen_upper_of_not_le h in
+  ⟨Uᶜ, hU.compl, hU'.compl, not_not.2 hx, hy⟩
+end preorder
+section partial_order
+variables [partial_order α] [priestley_space α] {x y : α}
+lemma exists_clopen_upper_or_lower_of_ne (h : x ≠ y) :
+  ∃ U : set α, is_clopen U ∧ (is_upper_set U ∨ is_lower_set U) ∧ x ∈ U ∧ y ∉ U :=
+begin
+  obtain (h | h) := h.not_le_or_not_le,
+  { exact (exists_clopen_upper_of_not_le h).imp (λ U, and.imp_right $ and.imp_left or.inl) },
+  { obtain ⟨U, hU, hU', hy, hx⟩ := exists_clopen_lower_of_not_le h,
+    exact ⟨U, hU, or.inr hU', hx, hy⟩ }
+end

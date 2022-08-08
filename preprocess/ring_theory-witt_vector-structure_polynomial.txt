@@ -1,0 +1,92 @@
+import data.fin.vec_notation
+import field_theory.finite.polynomial
+import number_theory.basic
+import ring_theory.witt_vector.witt_polynomial
+open mv_polynomial
+open set
+open finset (range)
+open finsupp (single)
+noncomputable def witt_structure_rat (Φ : mv_polynomial idx ℚ) (n : ℕ) :
+  mv_polynomial (idx × ℕ) ℚ :=
+bind₁ (λ k, bind₁ (λ i, rename (prod.mk i) (W_ ℚ k)) Φ) (X_in_terms_of_W p ℚ n)
+theorem witt_structure_rat_prop (Φ : mv_polynomial idx ℚ) (n : ℕ) :
+  bind₁ (witt_structure_rat p Φ) (W_ ℚ n) =
+    bind₁ (λ i, (rename (prod.mk i) (W_ ℚ n))) Φ :=
+calc bind₁ (witt_structure_rat p Φ) (W_ ℚ n)
+    = bind₁ (λ k, bind₁ (λ i, (rename (prod.mk i)) (W_ ℚ k)) Φ)
+        (bind₁ (X_in_terms_of_W p ℚ) (W_ ℚ n)) :
+      by { rw bind₁_bind₁, apply eval₂_hom_congr (ring_hom.ext_rat _ _) rfl rfl }
+... = bind₁ (λ i, (rename (prod.mk i) (W_ ℚ n))) Φ :
+      by rw [bind₁_X_in_terms_of_W_witt_polynomial p _ n, bind₁_X_right]
+theorem witt_structure_rat_exists_unique (Φ : mv_polynomial idx ℚ) :
+  ∃! (φ : ℕ → mv_polynomial (idx × ℕ) ℚ),
+    ∀ (n : ℕ), bind₁ φ (W_ ℚ n) = bind₁ (λ i, (rename (prod.mk i) (W_ ℚ n))) Φ :=
+begin
+  refine ⟨witt_structure_rat p Φ, _, _⟩,
+  { intro n, apply witt_structure_rat_prop },
+  { intros φ H,
+    funext n,
+    rw show φ n = bind₁ φ (bind₁ (W_ ℚ) (X_in_terms_of_W p ℚ n)),
+    { rw [bind₁_witt_polynomial_X_in_terms_of_W p, bind₁_X_right] },
+    rw [bind₁_bind₁],
+        exact eval₂_hom_congr (ring_hom.ext_rat _ _) (funext H) rfl },
+end
+lemma witt_structure_rat_rec_aux (Φ : mv_polynomial idx ℚ) (n : ℕ) :
+  witt_structure_rat p Φ n * C (p ^ n : ℚ) =
+    bind₁ (λ b, rename (λ i, (b, i)) (W_ ℚ n)) Φ -
+      ∑ i in range n, C (p ^ i : ℚ) * (witt_structure_rat p Φ i) ^ p ^ (n - i) :=
+begin
+  have := X_in_terms_of_W_aux p ℚ n,
+  replace := congr_arg (bind₁ (λ k : ℕ, bind₁ (λ i, rename (prod.mk i) (W_ ℚ k)) Φ)) this,
+  rw [alg_hom.map_mul, bind₁_C_right] at this,
+  rw [witt_structure_rat, this], clear this,
+  conv_lhs { simp only [alg_hom.map_sub, bind₁_X_right] },
+  rw sub_right_inj,
+  simp only [alg_hom.map_sum, alg_hom.map_mul, bind₁_C_right, alg_hom.map_pow],
+  refl
+end
+lemma witt_structure_rat_rec (Φ : mv_polynomial idx ℚ) (n : ℕ) :
+  (witt_structure_rat p Φ n) = C (1 / p ^ n : ℚ) *
+  (bind₁ (λ b, (rename (λ i, (b, i)) (W_ ℚ n))) Φ -
+  ∑ i in range n, C (p ^ i : ℚ) * (witt_structure_rat p Φ i) ^ p ^ (n - i)) :=
+begin
+  calc witt_structure_rat p Φ n
+      = C (1 / p ^ n : ℚ) * (witt_structure_rat p Φ n * C (p ^ n : ℚ)) : _
+  ... = _ : by rw witt_structure_rat_rec_aux,
+  rw [mul_left_comm, ← C_mul, div_mul_cancel, C_1, mul_one],
+  exact pow_ne_zero _ (nat.cast_ne_zero.2 hp.1.ne_zero),
+end
+noncomputable def witt_structure_int (Φ : mv_polynomial idx ℤ) (n : ℕ) :
+  mv_polynomial (idx × ℕ) ℤ :=
+finsupp.map_range rat.num (rat.coe_int_num 0)
+  (witt_structure_rat p (map (int.cast_ring_hom ℚ) Φ) n)
+variable {p}
+lemma bind₁_rename_expand_witt_polynomial (Φ : mv_polynomial idx ℤ) (n : ℕ)
+  (IH : ∀ m : ℕ, m < (n + 1) →
+    map (int.cast_ring_hom ℚ) (witt_structure_int p Φ m) =
+      witt_structure_rat p (map (int.cast_ring_hom ℚ) Φ) m) :
+  bind₁ (λ b, rename (λ i, (b, i)) (expand p (W_ ℤ n))) Φ =
+    bind₁ (λ i, expand p (witt_structure_int p Φ i)) (W_ ℤ n) :=
+begin
+  apply mv_polynomial.map_injective (int.cast_ring_hom ℚ) int.cast_injective,
+  simp only [map_bind₁, map_rename, map_expand, rename_expand, map_witt_polynomial],
+  have key := (witt_structure_rat_prop p (map (int.cast_ring_hom ℚ) Φ) n).symm,
+  apply_fun expand p at key,
+  simp only [expand_bind₁] at key,
+  rw key, clear key,
+  apply eval₂_hom_congr' rfl _ rfl,
+  rintro i hi -,
+  rw [witt_polynomial_vars, finset.mem_range] at hi,
+  simp only [IH i hi],
+end
+lemma C_p_pow_dvd_bind₁_rename_witt_polynomial_sub_sum (Φ : mv_polynomial idx ℤ) (n : ℕ)
+  (IH : ∀ m : ℕ, m < n →
+    map (int.cast_ring_hom ℚ) (witt_structure_int p Φ m) =
+      witt_structure_rat p (map (int.cast_ring_hom ℚ) Φ) m) :
+  C ↑(p ^ n) ∣
+    (bind₁ (λ (b : idx), rename (λ i, (b, i)) (witt_polynomial p ℤ n)) Φ -
+      ∑ i in range n, C (↑p ^ i) * witt_structure_int p Φ i ^ p ^ (n - i)) :=
+begin
+  cases n,
+  { simp only [is_unit_one, int.coe_nat_zero, int.coe_nat_succ,
+      zero_add, pow_zero, C_1, is_unit.dvd] },

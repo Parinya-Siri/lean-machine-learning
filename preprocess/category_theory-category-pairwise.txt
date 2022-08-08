@@ -1,0 +1,72 @@
+import category_theory.category.preorder
+import category_theory.limits.is_limit
+noncomputable theory
+universes v u
+open category_theory
+open category_theory.limits
+namespace category_theory
+inductive pairwise (ι : Type v)
+| single : ι → pairwise
+| pair : ι → ι → pairwise
+variables {ι : Type v}
+namespace pairwise
+instance pairwise_inhabited [inhabited ι] : inhabited (pairwise ι) := ⟨single default⟩
+inductive hom : pairwise ι → pairwise ι → Type v
+| id_single : Π i, hom (single i) (single i)
+| id_pair : Π i j, hom (pair i j) (pair i j)
+| left : Π i j, hom (pair i j) (single i)
+| right : Π i j, hom (pair i j) (single j)
+open hom
+instance hom_inhabited [inhabited ι] : inhabited (hom (single (default : ι)) (single default)) :=
+⟨id_single default⟩
+def id : Π (o : pairwise ι), hom o o
+| (single i) := id_single i
+| (pair i j) := id_pair i j
+def comp : Π {o₁ o₂ o₃ : pairwise ι} (f : hom o₁ o₂) (g : hom o₂ o₃), hom o₁ o₃
+| _ _ _ (id_single i) g := g
+| _ _ _ (id_pair i j) g := g
+| _ _ _ (left i j) (id_single _) := left i j
+| _ _ _ (right i j) (id_single _) := right i j
+section
+local attribute [tidy] tactic.case_bash
+instance : category (pairwise ι) :=
+{ hom := hom,
+  id := id,
+  comp := λ X Y Z f g, comp f g, }
+end
+variables {α : Type v} (U : ι → α)
+section
+variables [semilattice_inf α]
+@[simp]
+def diagram_obj : pairwise ι → α
+| (single i) := U i
+| (pair i j) := U i ⊓ U j
+@[simp]
+def diagram_map : Π {o₁ o₂ : pairwise ι} (f : o₁ ⟶ o₂), diagram_obj U o₁ ⟶ diagram_obj U o₂
+| _ _ (id_single i) := 𝟙 _
+| _ _ (id_pair i j) := 𝟙 _
+| _ _ (left i j) := hom_of_le inf_le_left
+| _ _ (right i j) := hom_of_le inf_le_right
+@[simps]
+def diagram : pairwise ι ⥤ α :=
+{ obj := diagram_obj U,
+  map := λ X Y f, diagram_map U f, }
+end
+section
+def cocone_ι_app : Π (o : pairwise ι), diagram_obj U o ⟶ supr U
+| (single i) := hom_of_le (le_supr U i)
+| (pair i j) := hom_of_le inf_le_left ≫ hom_of_le (le_supr U i)
+@[simps]
+def cocone : cocone (diagram U) :=
+{ X := supr U,
+  ι := { app := cocone_ι_app U, } }
+def cocone_is_colimit : is_colimit (cocone U) :=
+{ desc := λ s, hom_of_le
+  begin
+    apply complete_lattice.Sup_le,
+    rintros _ ⟨j, rfl⟩,
+    exact (s.ι.app (single j)).le
+  end }
+end
+end pairwise
+end category_theory

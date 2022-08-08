@@ -1,0 +1,9 @@
+import analysis.special_functions.trigonometric.arctan_deriv
+namespace real
+open filter set
+open_locale classical big_operators topological_space real
+local notation `|`x`|` := abs x
+theorem tendsto_sum_pi_div_four :
+  tendsto (λ k, ∑ i in finset.range k, ((-(1:ℝ))^i / (2*i+1))) at_top (𝓝 (π/4)) :=
+begin
+  rw [tendsto_iff_norm_tendsto_zero, ← tendsto_zero_iff_norm_tendsto_zero],

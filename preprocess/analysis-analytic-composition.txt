@@ -1,0 +1,599 @@
+import analysis.analytic.basic
+import combinatorics.composition
+noncomputable theory
+variables {𝕜 : Type*} {E F G H : Type*}
+open filter list
+open_locale topological_space big_operators classical nnreal ennreal
+section topological
+variables [comm_ring 𝕜] [add_comm_group E] [add_comm_group F] [add_comm_group G]
+variables [module 𝕜 E] [module 𝕜 F] [module 𝕜 G]
+variables [topological_space E] [topological_space F] [topological_space G]
+namespace formal_multilinear_series
+variables [topological_add_group E] [has_continuous_const_smul 𝕜 E]
+variables [topological_add_group F] [has_continuous_const_smul 𝕜 F]
+variables [topological_add_group G] [has_continuous_const_smul 𝕜 G]
+def apply_composition
+  (p : formal_multilinear_series 𝕜 E F) {n : ℕ} (c : composition n) :
+  (fin n → E) → (fin (c.length) → F) :=
+λ v i, p (c.blocks_fun i) (v ∘ (c.embedding i))
+lemma apply_composition_ones (p : formal_multilinear_series 𝕜 E F) (n : ℕ) :
+  p.apply_composition (composition.ones n) =
+    λ v i, p 1 (λ _, v (fin.cast_le (composition.length_le _) i)) :=
+begin
+  funext v i,
+  apply p.congr (composition.ones_blocks_fun _ _),
+  intros j hjn hj1,
+  obtain rfl : j = 0, { linarith },
+  refine congr_arg v _,
+  rw [fin.ext_iff, fin.coe_cast_le, composition.ones_embedding, fin.coe_mk],
+end
+lemma apply_composition_single (p : formal_multilinear_series 𝕜 E F) {n : ℕ} (hn : 0 < n)
+  (v : fin n → E) : p.apply_composition (composition.single n hn) v = λ j, p n v :=
+begin
+  ext j,
+  refine p.congr (by simp) (λ i hi1 hi2, _),
+  dsimp,
+  congr' 1,
+  convert composition.single_embedding hn ⟨i, hi2⟩,
+  cases j,
+  have : j_val = 0 := le_bot_iff.1 (nat.lt_succ_iff.1 j_property),
+  unfold_coes,
+  congr; try { assumption <|> simp },
+end
+@[simp] lemma remove_zero_apply_composition
+  (p : formal_multilinear_series 𝕜 E F) {n : ℕ} (c : composition n) :
+  p.remove_zero.apply_composition c = p.apply_composition c :=
+begin
+  ext v i,
+  simp [apply_composition, zero_lt_one.trans_le (c.one_le_blocks_fun i), remove_zero_of_pos],
+end
+lemma apply_composition_update
+  (p : formal_multilinear_series 𝕜 E F) {n : ℕ} (c : composition n)
+  (j : fin n) (v : fin n → E) (z : E) :
+  p.apply_composition c (function.update v j z) =
+    function.update (p.apply_composition c v) (c.index j)
+      (p (c.blocks_fun (c.index j))
+        (function.update (v ∘ (c.embedding (c.index j))) (c.inv_embedding j) z)) :=
+begin
+  ext k,
+  by_cases h : k = c.index j,
+  { rw h,
+    let r : fin (c.blocks_fun (c.index j)) → fin n := c.embedding (c.index j),
+    simp only [function.update_same],
+    change p (c.blocks_fun (c.index j)) ((function.update v j z) ∘ r) = _,
+    let j' := c.inv_embedding j,
+    suffices B : (function.update v j z) ∘ r = function.update (v ∘ r) j' z,
+      by rw B,
+    suffices C : (function.update v (r j') z) ∘ r = function.update (v ∘ r) j' z,
+      by { convert C, exact (c.embedding_comp_inv j).symm },
+    exact function.update_comp_eq_of_injective _ (c.embedding _).injective _ _ },
+  { simp only [h, function.update_eq_self, function.update_noteq, ne.def, not_false_iff],
+    let r : fin (c.blocks_fun k) → fin n := c.embedding k,
+    change p (c.blocks_fun k) ((function.update v j z) ∘ r) = p (c.blocks_fun k) (v ∘ r),
+    suffices B : (function.update v j z) ∘ r = v ∘ r, by rw B,
+    apply function.update_comp_eq_of_not_mem_range,
+    rwa c.mem_range_embedding_iff' }
+end
+@[simp] lemma comp_continuous_linear_map_apply_composition {n : ℕ}
+  (p : formal_multilinear_series 𝕜 F G) (f : E →L[𝕜] F) (c : composition n) (v : fin n → E) :
+  (p.comp_continuous_linear_map f).apply_composition c v = p.apply_composition c (f ∘ v) :=
+by simp [apply_composition]
+end formal_multilinear_series
+namespace continuous_multilinear_map
+open formal_multilinear_series
+variables [topological_add_group E] [has_continuous_const_smul 𝕜 E]
+variables [topological_add_group F] [has_continuous_const_smul 𝕜 F]
+def comp_along_composition {n : ℕ}
+  (p : formal_multilinear_series 𝕜 E F) (c : composition n)
+  (f : continuous_multilinear_map 𝕜 (λ (i : fin c.length), F) G) :
+  continuous_multilinear_map 𝕜 (λ i : fin n, E) G :=
+{ to_fun    := λ v, f (p.apply_composition c v),
+  map_add'  := λ v i x y, by simp only [apply_composition_update,
+    continuous_multilinear_map.map_add],
+  map_smul' := λ v i c x, by simp only [apply_composition_update,
+    continuous_multilinear_map.map_smul],
+  cont := f.cont.comp $ continuous_pi $ λ i, (coe_continuous _).comp $ continuous_pi $ λ j,
+    continuous_apply _, }
+@[simp] lemma comp_along_composition_apply {n : ℕ}
+  (p : formal_multilinear_series 𝕜 E F) (c : composition n)
+  (f : continuous_multilinear_map 𝕜 (λ (i : fin c.length), F) G) (v : fin n → E) :
+  (f.comp_along_composition p c) v = f (p.apply_composition c v) := rfl
+end continuous_multilinear_map
+namespace formal_multilinear_series
+variables [topological_add_group E] [has_continuous_const_smul 𝕜 E]
+variables [topological_add_group F] [has_continuous_const_smul 𝕜 F]
+variables [topological_add_group G] [has_continuous_const_smul 𝕜 G]
+def comp_along_composition {n : ℕ}
+  (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F)
+  (c : composition n) : continuous_multilinear_map 𝕜 (λ i : fin n, E) G :=
+(q c.length).comp_along_composition p c
+@[simp] lemma comp_along_composition_apply {n : ℕ}
+  (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F)
+  (c : composition n) (v : fin n → E) :
+  (q.comp_along_composition p c) v = q c.length (p.apply_composition c v) := rfl
+protected def comp (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F) :
+  formal_multilinear_series 𝕜 E G :=
+λ n, ∑ c : composition n, q.comp_along_composition p c
+lemma comp_coeff_zero (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F)
+  (v : fin 0 → E) (v' : fin 0 → F) :
+  (q.comp p) 0 v = q 0 v' :=
+begin
+  let c : composition 0 := composition.ones 0,
+  dsimp [formal_multilinear_series.comp],
+  have : {c} = (finset.univ : finset (composition 0)),
+  { apply finset.eq_of_subset_of_card_le; simp [finset.card_univ, composition_card 0] },
+  rw [← this, finset.sum_singleton, comp_along_composition_apply],
+  symmetry, congr'
+end
+@[simp] lemma comp_coeff_zero'
+  (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F) (v : fin 0 → E) :
+  (q.comp p) 0 v = q 0 (λ i, 0) :=
+q.comp_coeff_zero p v _
+lemma comp_coeff_zero'' (q : formal_multilinear_series 𝕜 E F)
+  (p : formal_multilinear_series 𝕜 E E) :
+  (q.comp p) 0 = q 0 :=
+by { ext v, exact q.comp_coeff_zero p _ _ }
+lemma comp_coeff_one (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F)
+  (v : fin 1 → E) : (q.comp p) 1 v = q 1 (λ i, p 1 v) :=
+begin
+  have : {composition.ones 1} = (finset.univ : finset (composition 1)) :=
+    finset.eq_univ_of_card _ (by simp [composition_card]),
+  simp only [formal_multilinear_series.comp, comp_along_composition_apply, ← this,
+    finset.sum_singleton],
+  refine q.congr (by simp) (λ i hi1 hi2, _),
+  simp only [apply_composition_ones],
+  exact p.congr rfl (λ j hj1 hj2, by congr)
+end
+lemma remove_zero_comp_of_pos (q : formal_multilinear_series 𝕜 F G)
+  (p : formal_multilinear_series 𝕜 E F) {n : ℕ} (hn : 0 < n) :
+  q.remove_zero.comp p n = q.comp p n :=
+begin
+  ext v,
+  simp only [formal_multilinear_series.comp, comp_along_composition,
+    continuous_multilinear_map.comp_along_composition_apply, continuous_multilinear_map.sum_apply],
+  apply finset.sum_congr rfl (λ c hc, _),
+  rw remove_zero_of_pos _ (c.length_pos_of_pos hn)
+end
+@[simp] lemma comp_remove_zero (q : formal_multilinear_series 𝕜 F G)
+  (p : formal_multilinear_series 𝕜 E F) :
+  q.comp p.remove_zero = q.comp p :=
+by { ext n, simp [formal_multilinear_series.comp] }
+end formal_multilinear_series
+end topological
+variables [nondiscrete_normed_field 𝕜]
+  [normed_group E] [normed_space 𝕜 E]
+  [normed_group F] [normed_space 𝕜 F]
+  [normed_group G] [normed_space 𝕜 G]
+  [normed_group H] [normed_space 𝕜 H]
+namespace formal_multilinear_series
+lemma comp_along_composition_bound {n : ℕ}
+  (p : formal_multilinear_series 𝕜 E F) (c : composition n)
+  (f : continuous_multilinear_map 𝕜 (λ (i : fin c.length), F) G) (v : fin n → E) :
+  ∥f.comp_along_composition p c v∥ ≤
+    ∥f∥ * (∏ i, ∥p (c.blocks_fun i)∥) * (∏ i : fin n, ∥v i∥) :=
+calc ∥f.comp_along_composition p c v∥ = ∥f (p.apply_composition c v)∥ : rfl
+... ≤ ∥f∥ * ∏ i, ∥p.apply_composition c v i∥ : continuous_multilinear_map.le_op_norm _ _
+... ≤ ∥f∥ * ∏ i, ∥p (c.blocks_fun i)∥ *
+        ∏ j : fin (c.blocks_fun i), ∥(v ∘ (c.embedding i)) j∥ :
+  begin
+    apply mul_le_mul_of_nonneg_left _ (norm_nonneg _),
+    refine finset.prod_le_prod (λ i hi, norm_nonneg _) (λ i hi, _),
+    apply continuous_multilinear_map.le_op_norm,
+  end
+... = ∥f∥ * (∏ i, ∥p (c.blocks_fun i)∥) *
+        ∏ i (j : fin (c.blocks_fun i)), ∥(v ∘ (c.embedding i)) j∥ :
+  by rw [finset.prod_mul_distrib, mul_assoc]
+... = ∥f∥ * (∏ i, ∥p (c.blocks_fun i)∥) * (∏ i : fin n, ∥v i∥) :
+  by { rw [← c.blocks_fin_equiv.prod_comp, ← finset.univ_sigma_univ, finset.prod_sigma],
+       congr }
+lemma comp_along_composition_norm {n : ℕ}
+  (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F)
+  (c : composition n) :
+  ∥q.comp_along_composition p c∥ ≤ ∥q c.length∥ * ∏ i, ∥p (c.blocks_fun i)∥ :=
+continuous_multilinear_map.op_norm_le_bound _
+  (mul_nonneg (norm_nonneg _) (finset.prod_nonneg (λ i hi, norm_nonneg _)))
+    (comp_along_composition_bound _ _ _)
+lemma comp_along_composition_nnnorm {n : ℕ}
+  (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F)
+  (c : composition n) :
+  ∥q.comp_along_composition p c∥₊ ≤ ∥q c.length∥₊ * ∏ i, ∥p (c.blocks_fun i)∥₊ :=
+by { rw ← nnreal.coe_le_coe, push_cast, exact q.comp_along_composition_norm p c }
+section
+variables (𝕜 E)
+def id : formal_multilinear_series 𝕜 E E
+| 0 := 0
+| 1 := (continuous_multilinear_curry_fin1 𝕜 E E).symm (continuous_linear_map.id 𝕜 E)
+| _ := 0
+@[simp] lemma id_apply_one (v : fin 1 → E) : (formal_multilinear_series.id 𝕜 E) 1 v = v 0 := rfl
+lemma id_apply_one' {n : ℕ} (h : n = 1) (v : fin n → E) :
+  (id 𝕜 E) n v = v ⟨0, h.symm ▸ zero_lt_one⟩ :=
+begin
+  subst n,
+  apply id_apply_one
+end
+@[simp] lemma id_apply_ne_one {n : ℕ} (h : n ≠ 1) : (formal_multilinear_series.id 𝕜 E) n = 0 :=
+by { cases n, { refl }, cases n, { contradiction }, refl }
+end
+@[simp] theorem comp_id (p : formal_multilinear_series 𝕜 E F) : p.comp (id 𝕜 E) = p :=
+begin
+  ext1 n,
+  dsimp [formal_multilinear_series.comp],
+  rw finset.sum_eq_single (composition.ones n),
+  show comp_along_composition p (id 𝕜 E) (composition.ones n) = p n,
+  { ext v,
+    rw comp_along_composition_apply,
+    apply p.congr (composition.ones_length n),
+    intros,
+    rw apply_composition_ones,
+    refine congr_arg v _,
+    rw [fin.ext_iff, fin.coe_cast_le, fin.coe_mk, fin.coe_mk], },
+  show ∀ (b : composition n),
+    b ∈ finset.univ → b ≠ composition.ones n → comp_along_composition p (id 𝕜 E) b = 0,
+  { assume b _ hb,
+    obtain ⟨k, hk, lt_k⟩ : ∃ (k : ℕ) (H : k ∈ composition.blocks b), 1 < k :=
+      composition.ne_ones_iff.1 hb,
+    obtain ⟨i, i_lt, hi⟩ : ∃ (i : ℕ) (h : i < b.blocks.length), b.blocks.nth_le i h = k :=
+      nth_le_of_mem hk,
+    let j : fin b.length := ⟨i, b.blocks_length ▸ i_lt⟩,
+    have A : 1 < b.blocks_fun j := by convert lt_k,
+    ext v,
+    rw [comp_along_composition_apply, continuous_multilinear_map.zero_apply],
+    apply continuous_multilinear_map.map_coord_zero _ j,
+    dsimp [apply_composition],
+    rw id_apply_ne_one _ _ (ne_of_gt A),
+    refl },
+  { simp }
+end
+@[simp] theorem id_comp (p : formal_multilinear_series 𝕜 E F) (h : p 0 = 0) : (id 𝕜 F).comp p = p :=
+begin
+  ext1 n,
+  by_cases hn : n = 0,
+  { rw [hn, h],
+    ext v,
+    rw [comp_coeff_zero', id_apply_ne_one _ _ zero_ne_one],
+    refl },
+  { dsimp [formal_multilinear_series.comp],
+    have n_pos : 0 < n := bot_lt_iff_ne_bot.mpr hn,
+    rw finset.sum_eq_single (composition.single n n_pos),
+    show comp_along_composition (id 𝕜 F) p (composition.single n n_pos) = p n,
+    { ext v,
+      rw [comp_along_composition_apply, id_apply_one' _ _ (composition.single_length n_pos)],
+      dsimp [apply_composition],
+      refine p.congr rfl (λ i him hin, congr_arg v $ _),
+      ext, simp },
+    show ∀ (b : composition n),
+      b ∈ finset.univ → b ≠ composition.single n n_pos → comp_along_composition (id 𝕜 F) p b = 0,
+    { assume b _ hb,
+      have A : b.length ≠ 1, by simpa [composition.eq_single_iff_length] using hb,
+      ext v,
+      rw [comp_along_composition_apply, id_apply_ne_one _ _ A],
+      refl },
+    { simp } }
+end
+section
+theorem comp_summable_nnreal
+  (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F)
+  (hq : 0 < q.radius) (hp : 0 < p.radius) :
+  ∃ r > (0 : ℝ≥0),
+    summable (λ i : Σ n, composition n, ∥q.comp_along_composition p i.2∥₊ * r ^ i.1) :=
+begin
+  rcases ennreal.lt_iff_exists_nnreal_btwn.1 (lt_min ennreal.zero_lt_one hq) with ⟨rq, rq_pos, hrq⟩,
+  rcases ennreal.lt_iff_exists_nnreal_btwn.1 (lt_min ennreal.zero_lt_one hp) with ⟨rp, rp_pos, hrp⟩,
+  simp only [lt_min_iff, ennreal.coe_lt_one_iff, ennreal.coe_pos] at hrp hrq rp_pos rq_pos,
+  obtain ⟨Cq, hCq0, hCq⟩ : ∃ Cq > 0, ∀ n, ∥q n∥₊ * rq^n ≤ Cq :=
+    q.nnnorm_mul_pow_le_of_lt_radius hrq.2,
+  obtain ⟨Cp, hCp1, hCp⟩ : ∃ Cp ≥ 1, ∀ n, ∥p n∥₊ * rp^n ≤ Cp,
+  { rcases p.nnnorm_mul_pow_le_of_lt_radius hrp.2 with ⟨Cp, -, hCp⟩,
+    exact ⟨max Cp 1, le_max_right _ _, λ n, (hCp n).trans (le_max_left _ _)⟩ },
+  let r0 : ℝ≥0 := (4 * Cp)⁻¹,
+  have r0_pos : 0 < r0 := nnreal.inv_pos.2 (mul_pos zero_lt_four (zero_lt_one.trans_le hCp1)),
+  set r : ℝ≥0 := rp * rq * r0,
+  have r_pos : 0 < r := mul_pos (mul_pos rp_pos rq_pos) r0_pos,
+  have I : ∀ (i : Σ (n : ℕ), composition n),
+    ∥q.comp_along_composition p i.2∥₊ * r ^ i.1 ≤ Cq / 4 ^ i.1,
+  { rintros ⟨n, c⟩,
+    have A,
+    calc ∥q c.length∥₊ * rq ^ n ≤ ∥q c.length∥₊* rq ^ c.length :
+      mul_le_mul' le_rfl (pow_le_pow_of_le_one rq.2 hrq.1.le c.length_le)
+    ... ≤ Cq : hCq _,
+    have B,
+    calc ((∏ i, ∥p (c.blocks_fun i)∥₊) * rp ^ n)
+        = ∏ i, ∥p (c.blocks_fun i)∥₊ * rp ^ c.blocks_fun i :
+      by simp only [finset.prod_mul_distrib, finset.prod_pow_eq_pow_sum, c.sum_blocks_fun]
+    ... ≤ ∏ i : fin c.length, Cp : finset.prod_le_prod' (λ i _, hCp _)
+    ... = Cp ^ c.length : by simp
+    ... ≤ Cp ^ n : pow_le_pow hCp1 c.length_le,
+    calc ∥q.comp_along_composition p c∥₊ * r ^ n
+        ≤ (∥q c.length∥₊ * ∏ i, ∥p (c.blocks_fun i)∥₊) * r ^ n :
+          mul_le_mul' (q.comp_along_composition_nnnorm p c) le_rfl
+    ... = (∥q c.length∥₊ * rq ^ n) * ((∏ i, ∥p (c.blocks_fun i)∥₊) * rp ^ n) * r0 ^ n :
+          by { simp only [r, mul_pow], ring }
+    ... ≤ Cq * Cp ^ n * r0 ^ n : mul_le_mul' (mul_le_mul' A B) le_rfl
+    ... = Cq / 4 ^ n :
+      begin
+        simp only [r0],
+        field_simp [mul_pow, (zero_lt_one.trans_le hCp1).ne'],
+        ring
+      end },
+  refine ⟨r, r_pos, nnreal.summable_of_le I _⟩,
+  simp_rw div_eq_mul_inv,
+  refine summable.mul_left _ _,
+  have : ∀ n : ℕ, has_sum (λ c : composition n, (4 ^ n : ℝ≥0)⁻¹) (2 ^ (n - 1) / 4 ^ n),
+  { intro n,
+    convert has_sum_fintype (λ c : composition n, (4 ^ n : ℝ≥0)⁻¹),
+    simp [finset.card_univ, composition_card, div_eq_mul_inv] },
+  refine nnreal.summable_sigma.2 ⟨λ n, (this n).summable, (nnreal.summable_nat_add_iff 1).1 _⟩,
+  convert (nnreal.summable_geometric (nnreal.div_lt_one_of_lt one_lt_two)).mul_left (1 / 4),
+  ext1 n,
+  rw [(this _).tsum_eq, add_tsub_cancel_right],
+  field_simp [← mul_assoc, pow_succ', mul_pow, show (4 : ℝ≥0) = 2 * 2, from (two_mul 2).symm,
+    mul_right_comm]
+end
+end
+theorem le_comp_radius_of_summable
+  (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F) (r : ℝ≥0)
+  (hr : summable (λ i : (Σ n, composition n), ∥q.comp_along_composition p i.2∥₊ * r ^ i.1)) :
+  (r : ℝ≥0∞) ≤ (q.comp p).radius :=
+begin
+  refine le_radius_of_bound_nnreal _
+    (∑' i : (Σ n, composition n), ∥comp_along_composition q p i.snd∥₊ * r ^ i.fst) (λ n, _),
+  calc ∥formal_multilinear_series.comp q p n∥₊ * r ^ n ≤
+  ∑' (c : composition n), ∥comp_along_composition q p c∥₊ * r ^ n :
+    begin
+      rw [tsum_fintype, ← finset.sum_mul],
+      exact mul_le_mul' (nnnorm_sum_le _ _) le_rfl
+    end
+  ... ≤ ∑' (i : Σ (n : ℕ), composition n), ∥comp_along_composition q p i.snd∥₊ * r ^ i.fst :
+    nnreal.tsum_comp_le_tsum_of_inj hr sigma_mk_injective
+end
+def comp_partial_sum_source (m M N : ℕ) : finset (Σ n, (fin n) → ℕ) :=
+finset.sigma (finset.Ico m M) (λ (n : ℕ), fintype.pi_finset (λ (i : fin n), finset.Ico 1 N) : _)
+@[simp] lemma mem_comp_partial_sum_source_iff (m M N : ℕ) (i : Σ n, (fin n) → ℕ) :
+  i ∈ comp_partial_sum_source m M N ↔
+    (m ≤ i.1 ∧ i.1 < M) ∧ ∀ (a : fin i.1), 1 ≤ i.2 a ∧ i.2 a < N :=
+by simp only [comp_partial_sum_source, finset.mem_Ico, fintype.mem_pi_finset, finset.mem_sigma,
+  iff_self]
+def comp_change_of_variables (m M N : ℕ) (i : Σ n, (fin n) → ℕ)
+  (hi : i ∈ comp_partial_sum_source m M N) : (Σ n, composition n) :=
+begin
+  rcases i with ⟨n, f⟩,
+  rw mem_comp_partial_sum_source_iff at hi,
+  refine ⟨∑ j, f j, of_fn (λ a, f a), λ i hi', _, by simp [sum_of_fn]⟩,
+  obtain ⟨j, rfl⟩ : ∃ (j : fin n), f j = i, by rwa [mem_of_fn, set.mem_range] at hi',
+  exact (hi.2 j).1
+end
+@[simp] lemma comp_change_of_variables_length
+  (m M N : ℕ) {i : Σ n, (fin n) → ℕ} (hi : i ∈ comp_partial_sum_source m M N) :
+  composition.length (comp_change_of_variables m M N i hi).2 = i.1 :=
+begin
+  rcases i with ⟨k, blocks_fun⟩,
+  dsimp [comp_change_of_variables],
+  simp only [composition.length, map_of_fn, length_of_fn]
+end
+lemma comp_change_of_variables_blocks_fun
+  (m M N : ℕ) {i : Σ n, (fin n) → ℕ} (hi : i ∈ comp_partial_sum_source m M N) (j : fin i.1) :
+  (comp_change_of_variables m M N i hi).2.blocks_fun
+    ⟨j, (comp_change_of_variables_length m M N hi).symm ▸ j.2⟩ = i.2 j :=
+begin
+  rcases i with ⟨n, f⟩,
+  dsimp [composition.blocks_fun, composition.blocks, comp_change_of_variables],
+  simp only [map_of_fn, nth_le_of_fn', function.comp_app],
+  apply congr_arg,
+  exact fin.eta _ _
+end
+def comp_partial_sum_target_set (m M N : ℕ) : set (Σ n, composition n) :=
+{i | (m ≤ i.2.length) ∧ (i.2.length < M) ∧ (∀ (j : fin i.2.length), i.2.blocks_fun j < N)}
+lemma comp_partial_sum_target_subset_image_comp_partial_sum_source
+  (m M N : ℕ) (i : Σ n, composition n) (hi : i ∈ comp_partial_sum_target_set m M N) :
+  ∃ j (hj : j ∈ comp_partial_sum_source m M N), i = comp_change_of_variables m M N j hj :=
+begin
+  rcases i with ⟨n, c⟩,
+  refine ⟨⟨c.length, c.blocks_fun⟩, _, _⟩,
+  { simp only [comp_partial_sum_target_set, set.mem_set_of_eq] at hi,
+    simp only [mem_comp_partial_sum_source_iff, hi.left, hi.right, true_and, and_true],
+    exact λ a, c.one_le_blocks' _ },
+  { dsimp [comp_change_of_variables],
+    rw composition.sigma_eq_iff_blocks_eq,
+    simp only [composition.blocks_fun, composition.blocks, subtype.coe_eta, nth_le_map'],
+    conv_lhs { rw ← of_fn_nth_le c.blocks } }
+end
+def comp_partial_sum_target (m M N : ℕ) : finset (Σ n, composition n) :=
+set.finite.to_finset $ ((finset.finite_to_set _).dependent_image _).subset $
+  comp_partial_sum_target_subset_image_comp_partial_sum_source m M N
+@[simp] lemma mem_comp_partial_sum_target_iff {m M N : ℕ} {a : Σ n, composition n} :
+  a ∈ comp_partial_sum_target m M N ↔
+    m ≤ a.2.length ∧ a.2.length < M ∧ (∀ (j : fin a.2.length), a.2.blocks_fun j < N) :=
+by simp [comp_partial_sum_target, comp_partial_sum_target_set]
+lemma comp_change_of_variables_sum {α : Type*} [add_comm_monoid α] (m M N : ℕ)
+  (f : (Σ (n : ℕ), fin n → ℕ) → α) (g : (Σ n, composition n) → α)
+  (h : ∀ e (he : e ∈ comp_partial_sum_source m M N),
+    f e = g (comp_change_of_variables m M N e he)) :
+  ∑ e in comp_partial_sum_source m M N, f e = ∑ e in comp_partial_sum_target m M N, g e :=
+begin
+  apply finset.sum_bij (comp_change_of_variables m M N),
+lemma comp_partial_sum_target_tendsto_at_top :
+  tendsto (λ N, comp_partial_sum_target 0 N N) at_top at_top :=
+begin
+  apply monotone.tendsto_at_top_finset,
+  { assume m n hmn a ha,
+    have : ∀ i, i < m → i < n := λ i hi, lt_of_lt_of_le hi hmn,
+    tidy },
+  { rintros ⟨n, c⟩,
+    simp only [mem_comp_partial_sum_target_iff],
+    obtain ⟨n, hn⟩ : bdd_above ↑(finset.univ.image (λ (i : fin c.length), c.blocks_fun i)) :=
+      finset.bdd_above _,
+    refine ⟨max n c.length + 1, bot_le, lt_of_le_of_lt (le_max_right n c.length) (lt_add_one _),
+      λ j, lt_of_le_of_lt (le_trans _ (le_max_left _ _)) (lt_add_one _)⟩,
+    apply hn,
+    simp only [finset.mem_image_of_mem, finset.mem_coe, finset.mem_univ] }
+end
+lemma comp_partial_sum
+  (q : formal_multilinear_series 𝕜 F G) (p : formal_multilinear_series 𝕜 E F) (N : ℕ) (z : E) :
+  q.partial_sum N (∑ i in finset.Ico 1 N, p i (λ j, z)) =
+    ∑ i in comp_partial_sum_target 0 N N, q.comp_along_composition p i.2 (λ j, z) :=
+begin
+theorem has_fpower_series_at.comp {g : F → G} {f : E → F}
+  {q : formal_multilinear_series 𝕜 F G} {p : formal_multilinear_series 𝕜 E F} {x : E}
+  (hg : has_fpower_series_at g q (f x)) (hf : has_fpower_series_at f p x) :
+  has_fpower_series_at (g ∘ f) (q.comp p) x :=
+begin
+  rcases hg with ⟨rg, Hg⟩,
+  rcases hf with ⟨rf, Hf⟩,
+  rcases q.comp_summable_nnreal p Hg.radius_pos Hf.radius_pos with ⟨r, r_pos : 0 < r, hr⟩,
+  have : continuous_at f x := Hf.analytic_at.continuous_at,
+  obtain ⟨δ, δpos, hδ⟩ : ∃ (δ : ℝ≥0∞) (H : 0 < δ),
+    ∀ {z : E}, z ∈ emetric.ball x δ → f z ∈ emetric.ball (f x) rg,
+  { have : emetric.ball (f x) rg ∈ 𝓝 (f x) := emetric.ball_mem_nhds _ Hg.r_pos,
+    rcases emetric.mem_nhds_iff.1 (Hf.analytic_at.continuous_at this) with ⟨δ, δpos, Hδ⟩,
+    exact ⟨δ, δpos, λ z hz, Hδ hz⟩ },
+  let rf' := min rf δ,
+  have min_pos : 0 < min rf' r,
+    by simp only [r_pos, Hf.r_pos, δpos, lt_min_iff, ennreal.coe_pos, and_self],
+  refine ⟨min rf' r, _⟩,
+  refine ⟨le_trans (min_le_right rf' r)
+    (formal_multilinear_series.le_comp_radius_of_summable q p r hr), min_pos, λ y hy, _⟩,
+theorem analytic_at.comp {g : F → G} {f : E → F} {x : E}
+  (hg : analytic_at 𝕜 g (f x)) (hf : analytic_at 𝕜 f x) : analytic_at 𝕜 (g ∘ f) x :=
+let ⟨q, hq⟩ := hg, ⟨p, hp⟩ := hf in (hq.comp hp).analytic_at
+namespace composition
+variable {n : ℕ}
+lemma sigma_composition_eq_iff (i j : Σ (a : composition n), composition a.length) :
+  i = j ↔ i.1.blocks = j.1.blocks ∧ i.2.blocks = j.2.blocks :=
+begin
+  refine ⟨by rintro rfl; exact ⟨rfl, rfl⟩, _⟩,
+  rcases i with ⟨a, b⟩,
+  rcases j with ⟨a', b'⟩,
+  rintros ⟨h, h'⟩,
+  have H : a = a', by { ext1, exact h },
+  induction H, congr, ext1, exact h'
+end
+lemma sigma_pi_composition_eq_iff
+  (u v : Σ (c : composition n), Π (i : fin c.length), composition (c.blocks_fun i)) :
+  u = v ↔ of_fn (λ i, (u.2 i).blocks) = of_fn (λ i, (v.2 i).blocks) :=
+begin
+  refine ⟨λ H, by rw H, λ H, _⟩,
+  rcases u with ⟨a, b⟩,
+  rcases v with ⟨a', b'⟩,
+  dsimp at H,
+  have h : a = a',
+  { ext1,
+    have : map list.sum (of_fn (λ (i : fin (composition.length a)), (b i).blocks)) =
+      map list.sum (of_fn (λ (i : fin (composition.length a')), (b' i).blocks)), by rw H,
+    simp only [map_of_fn] at this,
+    change of_fn (λ (i : fin (composition.length a)), (b i).blocks.sum) =
+      of_fn (λ (i : fin (composition.length a')), (b' i).blocks.sum) at this,
+    simpa [composition.blocks_sum, composition.of_fn_blocks_fun] using this },
+  induction h,
+  simp only [true_and, eq_self_iff_true, heq_iff_eq],
+  ext i : 2,
+  have : nth_le (of_fn (λ (i : fin (composition.length a)), (b i).blocks)) i (by simp [i.is_lt]) =
+         nth_le (of_fn (λ (i : fin (composition.length a)), (b' i).blocks)) i (by simp [i.is_lt]) :=
+    nth_le_of_eq H _,
+  rwa [nth_le_of_fn, nth_le_of_fn] at this
+end
+def gather (a : composition n) (b : composition a.length) : composition n :=
+{ blocks := (a.blocks.split_wrt_composition b).map sum,
+  blocks_pos :=
+  begin
+    rw forall_mem_map_iff,
+    intros j hj,
+    suffices H : ∀ i ∈ j, 1 ≤ i, from
+      calc 0 < j.length : length_pos_of_mem_split_wrt_composition hj
+        ... ≤ j.sum    : length_le_sum_of_one_le _ H,
+    intros i hi,
+    apply a.one_le_blocks,
+    rw ← a.blocks.join_split_wrt_composition b,
+    exact mem_join_of_mem hj hi,
+  end,
+  blocks_sum := by { rw [← sum_join, join_split_wrt_composition, a.blocks_sum] } }
+lemma length_gather (a : composition n) (b : composition a.length) :
+  length (a.gather b) = b.length :=
+show (map list.sum (a.blocks.split_wrt_composition b)).length = b.blocks.length,
+by rw [length_map, length_split_wrt_composition]
+def sigma_composition_aux (a : composition n) (b : composition a.length)
+  (i : fin (a.gather b).length) :
+  composition ((a.gather b).blocks_fun i) :=
+{ blocks := nth_le (a.blocks.split_wrt_composition b) i
+    (by { rw [length_split_wrt_composition, ← length_gather], exact i.2 }),
+  blocks_pos := assume i hi, a.blocks_pos
+    (by { rw ← a.blocks.join_split_wrt_composition b,
+          exact mem_join_of_mem (nth_le_mem _ _ _) hi }),
+  blocks_sum := by simp only [composition.blocks_fun, nth_le_map', composition.gather] }
+lemma length_sigma_composition_aux (a : composition n) (b : composition a.length)
+  (i : fin b.length) :
+  composition.length (composition.sigma_composition_aux a b ⟨i, (length_gather a b).symm ▸ i.2⟩) =
+    composition.blocks_fun b i :=
+show list.length (nth_le (split_wrt_composition a.blocks b) i _) = blocks_fun b i,
+by { rw [nth_le_map_rev list.length, nth_le_of_eq (map_length_split_wrt_composition _ _)], refl }
+lemma blocks_fun_sigma_composition_aux (a : composition n) (b : composition a.length)
+  (i : fin b.length) (j : fin (blocks_fun b i)) :
+  blocks_fun (sigma_composition_aux a b ⟨i, (length_gather a b).symm ▸ i.2⟩)
+      ⟨j, (length_sigma_composition_aux a b i).symm ▸ j.2⟩ = blocks_fun a (embedding b i j) :=
+show nth_le (nth_le _ _ _) _ _ = nth_le a.blocks _ _,
+by { rw [nth_le_of_eq (nth_le_split_wrt_composition _ _ _), nth_le_drop', nth_le_take'], refl }
+lemma size_up_to_size_up_to_add (a : composition n) (b : composition a.length)
+  {i j : ℕ} (hi : i < b.length) (hj : j < blocks_fun b ⟨i, hi⟩) :
+  size_up_to a (size_up_to b i + j) = size_up_to (a.gather b) i +
+    (size_up_to (sigma_composition_aux a b ⟨i, (length_gather a b).symm ▸ hi⟩) j) :=
+begin
+  induction j with j IHj,
+  { show sum (take ((b.blocks.take i).sum) a.blocks) =
+      sum (take i (map sum (split_wrt_composition a.blocks b))),
+    induction i with i IH,
+    { refl },
+    { have A : i < b.length := nat.lt_of_succ_lt hi,
+      have B : i < list.length (map list.sum (split_wrt_composition a.blocks b)), by simp [A],
+      have C : 0 < blocks_fun b ⟨i, A⟩ := composition.blocks_pos' _ _ _,
+      rw [sum_take_succ _ _ B, ← IH A C],
+      have : take (sum (take i b.blocks)) a.blocks =
+        take (sum (take i b.blocks)) (take (sum (take (i+1) b.blocks)) a.blocks),
+      { rw [take_take, min_eq_left],
+        apply monotone_sum_take _ (nat.le_succ _) },
+      rw [this, nth_le_map', nth_le_split_wrt_composition,
+        ← take_append_drop (sum (take i b.blocks))
+          ((take (sum (take (nat.succ i) b.blocks)) a.blocks)), sum_append],
+      congr,
+      rw [take_append_drop] } },
+  { have A : j < blocks_fun b ⟨i, hi⟩ := lt_trans (lt_add_one j) hj,
+    have B : j < length (sigma_composition_aux a b ⟨i, (length_gather a b).symm ▸ hi⟩),
+      by { convert A, rw [← length_sigma_composition_aux], refl },
+    have C : size_up_to b i + j < size_up_to b (i + 1),
+    { simp only [size_up_to_succ b hi, add_lt_add_iff_left],
+      exact A },
+    have D : size_up_to b i + j < length a := lt_of_lt_of_le C (b.size_up_to_le _),
+    have : size_up_to b i + nat.succ j = (size_up_to b i + j).succ := rfl,
+    rw [this, size_up_to_succ _ D, IHj A, size_up_to_succ _ B],
+    simp only [sigma_composition_aux, add_assoc, add_left_inj, fin.coe_mk],
+    rw [nth_le_of_eq (nth_le_split_wrt_composition _ _ _), nth_le_drop', nth_le_take _ _ C] }
+end
+def sigma_equiv_sigma_pi (n : ℕ) :
+  (Σ (a : composition n), composition a.length) ≃
+  (Σ (c : composition n), Π (i : fin c.length), composition (c.blocks_fun i)) :=
+{ to_fun := λ i, ⟨i.1.gather i.2, i.1.sigma_composition_aux i.2⟩,
+  inv_fun := λ i, ⟨
+    { blocks := (of_fn (λ j, (i.2 j).blocks)).join,
+      blocks_pos :=
+      begin
+        simp only [and_imp, list.mem_join, exists_imp_distrib, forall_mem_of_fn_iff],
+        exact λ i j hj, composition.blocks_pos _ hj
+      end,
+      blocks_sum := by simp [sum_of_fn, composition.blocks_sum, composition.sum_blocks_fun] },
+    { blocks := of_fn (λ j, (i.2 j).length),
+      blocks_pos := forall_mem_of_fn_iff.2
+        (λ j, composition.length_pos_of_pos _ (composition.blocks_pos' _ _ _)),
+      blocks_sum := by { dsimp only [composition.length], simp [sum_of_fn] } }⟩,
+  left_inv :=
+  begin
+  let f : (Σ (a : composition n), composition a.length) → H :=
+    λ c, r c.2.length (apply_composition q c.2 (apply_composition p c.1 v)),
+  let g : (Σ (c : composition n), Π (i : fin c.length), composition (c.blocks_fun i)) → H :=
+    λ c, r c.1.length (λ (i : fin c.1.length),
+      q (c.2 i).length (apply_composition p (c.2 i) (v ∘ c.1.embedding i))),
+  suffices : ∑ c, f c = ∑ c, g c,
+    by simpa only [formal_multilinear_series.comp, continuous_multilinear_map.sum_apply,
+      comp_along_composition_apply, continuous_multilinear_map.map_sum, finset.sum_sigma',
+      apply_composition],
+  rw ← (sigma_equiv_sigma_pi n).sum_comp,
+  apply finset.sum_congr rfl,
+  rintros ⟨a, b⟩ _,
+  dsimp [f, g, sigma_equiv_sigma_pi],

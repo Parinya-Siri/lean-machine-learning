@@ -1,0 +1,57 @@
+import tactic.linarith.elimination
+import tactic.linarith.parsing
+namespace linarith
+open ineq tactic native
+meta def mul_expr (n : ℕ) (e : expr) : pexpr :=
+if n = 1 then ``(%%e) else
+``(%%(nat.to_pexpr n) * %%e)
+private meta def add_exprs_aux : pexpr → list pexpr → pexpr
+| p [] := p
+| p [a] := ``(%%p + %%a)
+| p (h::t) := add_exprs_aux ``(%%p + %%h) t
+meta def add_exprs : list pexpr → pexpr
+| [] := ``(0)
+| (h::t) := add_exprs_aux h t
+meta def ineq_const_nm : ineq → ineq → (name × ineq)
+| eq eq := (``eq_of_eq_of_eq, eq)
+| eq le := (``le_of_eq_of_le, le)
+| eq lt := (``lt_of_eq_of_lt, lt)
+| le eq := (``le_of_le_of_eq, le)
+| le le := (`add_nonpos, le)
+| le lt := (`add_lt_of_le_of_neg, lt)
+| lt eq := (``lt_of_lt_of_eq, lt)
+| lt le := (`add_lt_of_neg_of_le, lt)
+| lt lt := (`left.add_neg, lt)
+meta def mk_lt_zero_pf_aux (c : ineq) (pf npf : expr) (coeff : ℕ) : tactic (ineq × expr) :=
+do (iq, h') ← mk_single_comp_zero_pf coeff npf,
+   let (nm, niq) := ineq_const_nm c iq,
+   prod.mk niq <$> mk_app nm [pf, h']
+meta def mk_lt_zero_pf : list (expr × ℕ) → tactic expr
+| [] := fail "no linear hypotheses found"
+| [(h, c)] := prod.snd <$> mk_single_comp_zero_pf c h
+| ((h, c)::t) :=
+  do (iq, h') ← mk_single_comp_zero_pf c h,
+     prod.snd <$> t.mfoldl (λ pr ce, mk_lt_zero_pf_aux pr.1 pr.2 ce.1 ce.2) (iq, h')
+meta def term_of_ineq_prf (prf : expr) : tactic expr :=
+prod.fst <$> (infer_type prf >>= get_rel_sides)
+meta def ineq_prf_tp (prf : expr) : tactic expr :=
+term_of_ineq_prf prf >>= infer_type
+meta def mk_neg_one_lt_zero_pf (tp : expr) : tactic expr :=
+do zero_lt_one ← mk_mapp `zero_lt_one [tp, none, none],
+   mk_app `neg_neg_of_pos [zero_lt_one]
+meta def mk_neg_eq_zero_pf (e : expr) : tactic expr :=
+to_expr ``(neg_eq_zero.mpr %%e)
+meta def prove_eq_zero_using (tac : tactic unit) (e : expr) : tactic expr :=
+do tgt ← to_expr ``(%%e = 0),
+   prod.snd <$> solve_aux tgt (tac >> done)
+meta def add_neg_eq_pfs : list expr → tactic (list expr)
+| [] := return []
+| (h::t) :=
+  do some (iq, tp) ← parse_into_comp_and_expr <$> infer_type h,
+  match iq with
+  | ineq.eq := do nep ← mk_neg_eq_zero_pf h, tl ← add_neg_eq_pfs t, return $ h::nep::tl
+  | _ := list.cons h <$> add_neg_eq_pfs t
+  end
+meta def prove_false_by_linarith (cfg : linarith_config) : list expr → tactic expr
+| [] := fail "no args to linarith"
+| l@(h::t) := do

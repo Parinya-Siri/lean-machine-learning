@@ -1,0 +1,13 @@
+import topology.order.lattice
+import analysis.normed.group.basic
+import algebra.order.lattice_group
+local notation `|`a`|` := abs a
+class normed_lattice_add_comm_group (α : Type*)
+  extends normed_group α, lattice α :=
+(add_le_add_left : ∀ a b : α, a ≤ b → ∀ c : α, c + a ≤ c + b)
+(solid : ∀ a b : α, |a| ≤ |b| → ∥a∥ ≤ ∥b∥)
+lemma solid {α : Type*} [normed_lattice_add_comm_group α] {a b : α} (h : |a| ≤ |b|) : ∥a∥ ≤ ∥b∥ :=
+normed_lattice_add_comm_group.solid a b h
+noncomputable instance : normed_lattice_add_comm_group ℝ :=
+{ add_le_add_left := λ _ _ h _, add_le_add le_rfl h,
+  solid := λ _ _, id, }

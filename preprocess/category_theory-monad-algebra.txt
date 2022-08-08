@@ -1,0 +1,181 @@
+import category_theory.monad.basic
+import category_theory.adjunction.basic
+namespace category_theory
+open category
+structure algebra (T : monad C) : Type (max u₁ v₁) :=
+(A : C)
+(a : (T : C ⥤ C).obj A ⟶ A)
+(unit' : T.η.app A ≫ a = 𝟙 A . obviously)
+(assoc' : T.μ.app A ≫ a = (T : C ⥤ C).map a ≫ a . obviously)
+restate_axiom algebra.unit'
+restate_axiom algebra.assoc'
+attribute [reassoc] algebra.unit algebra.assoc
+namespace algebra
+variables {T : monad C}
+@[ext] structure hom (A B : algebra T) :=
+(f : A.A ⟶ B.A)
+(h' : (T : C ⥤ C).map f ≫ B.a = A.a ≫ f . obviously)
+restate_axiom hom.h'
+attribute [simp, reassoc] hom.h
+namespace hom
+def id (A : algebra T) : hom A A :=
+{ f := 𝟙 A.A }
+instance (A : algebra T) : inhabited (hom A A) := ⟨{ f := 𝟙 _ }⟩
+def comp {P Q R : algebra T} (f : hom P Q) (g : hom Q R) : hom P R :=
+{ f := f.f ≫ g.f }
+end hom
+instance : category_struct (algebra T) :=
+{ hom := hom,
+  id := hom.id,
+  comp := @hom.comp _ _ _ }
+@[simp] lemma comp_eq_comp {A A' A'' : algebra T} (f : A ⟶ A') (g : A' ⟶ A'') :
+  algebra.hom.comp f g = f ≫ g := rfl
+@[simp] lemma id_eq_id (A : algebra T) :
+  algebra.hom.id A = 𝟙 A := rfl
+@[simp] lemma id_f (A : algebra T) : (𝟙 A : A ⟶ A).f = 𝟙 A.A := rfl
+@[simp] lemma comp_f {A A' A'' : algebra T} (f : A ⟶ A') (g : A' ⟶ A'') :
+  (f ≫ g).f = f.f ≫ g.f := rfl
+instance EilenbergMoore : category (algebra T) := {}.
+@[simps]
+def iso_mk {A B : algebra T} (h : A.A ≅ B.A) (w : (T : C ⥤ C).map h.hom ≫ B.a = A.a ≫ h.hom) :
+  A ≅ B :=
+{ hom := { f := h.hom },
+  inv :=
+  { f := h.inv,
+    h' := by { rw [h.eq_comp_inv, category.assoc, ←w, ←functor.map_comp_assoc], simp } } }
+end algebra
+variables (T : monad C)
+@[simps] def forget : algebra T ⥤ C :=
+{ obj := λ A, A.A,
+  map := λ A B f, f.f }
+@[simps] def free : C ⥤ algebra T :=
+{ obj := λ X,
+  { A := T.obj X,
+    a := T.μ.app X,
+    assoc' := (T.assoc _).symm },
+  map := λ X Y f,
+  { f := T.map f,
+    h' := T.μ.naturality _ } }
+instance [inhabited C] : inhabited (algebra T) :=
+⟨(free T).obj default⟩
+lemma algebra_iso_of_iso {A B : algebra T} (f : A ⟶ B) [is_iso f.f] : is_iso f :=
+⟨⟨{ f := inv f.f,
+    h' := by { rw [is_iso.eq_comp_inv f.f, category.assoc, ← f.h], simp } }, by tidy⟩⟩
+instance forget_reflects_iso : reflects_isomorphisms T.forget :=
+{ reflects := λ A B, algebra_iso_of_iso T }
+instance forget_faithful : faithful T.forget := {}
+instance : is_right_adjoint T.forget := ⟨T.free, T.adj⟩
+@[simp] lemma left_adjoint_forget : left_adjoint T.forget = T.free := rfl
+@[simp] lemma of_right_adjoint_forget : adjunction.of_right_adjoint T.forget = T.adj := rfl
+@[simps]
+def algebra_functor_of_monad_hom {T₁ T₂ : monad C} (h : T₂ ⟶ T₁) :
+  algebra T₁ ⥤ algebra T₂ :=
+{ obj := λ A,
+  { A := A.A,
+    a := h.app A.A ≫ A.a,
+    unit' := by { dsimp, simp [A.unit] },
+    assoc' := by { dsimp, simp [A.assoc] } },
+  map := λ A₁ A₂ f,
+  { f := f.f } }
+@[simps {rhs_md := semireducible}]
+def algebra_functor_of_monad_hom_id {T₁ : monad C} :
+  algebra_functor_of_monad_hom (𝟙 T₁) ≅ 𝟭 _ :=
+nat_iso.of_components
+  (λ X, algebra.iso_mk (iso.refl _) (by { dsimp, simp, }))
+  (λ X Y f, by { ext, dsimp, simp })
+@[simps {rhs_md := semireducible}]
+def algebra_functor_of_monad_hom_comp {T₁ T₂ T₃ : monad C} (f : T₁ ⟶ T₂) (g : T₂ ⟶ T₃) :
+  algebra_functor_of_monad_hom (f ≫ g) ≅
+    algebra_functor_of_monad_hom g ⋙ algebra_functor_of_monad_hom f :=
+nat_iso.of_components
+  (λ X, algebra.iso_mk (iso.refl _) (by { dsimp, simp }))
+  (λ X Y f, by { ext, dsimp, simp })
+@[simps {rhs_md := semireducible}]
+def algebra_functor_of_monad_hom_eq {T₁ T₂ : monad C} {f g : T₁ ⟶ T₂} (h : f = g) :
+  algebra_functor_of_monad_hom f ≅ algebra_functor_of_monad_hom g :=
+nat_iso.of_components
+  (λ X, algebra.iso_mk (iso.refl _) (by { dsimp, simp [h] }))
+  (λ X Y f, by { ext, dsimp, simp })
+@[simps]
+def algebra_equiv_of_iso_monads {T₁ T₂ : monad C} (h : T₁ ≅ T₂) :
+  algebra T₁ ≌ algebra T₂ :=
+{ functor := algebra_functor_of_monad_hom h.inv,
+  inverse := algebra_functor_of_monad_hom h.hom,
+  unit_iso :=
+    algebra_functor_of_monad_hom_id.symm ≪≫
+    algebra_functor_of_monad_hom_eq (by simp) ≪≫
+    algebra_functor_of_monad_hom_comp _ _,
+  counit_iso :=
+    (algebra_functor_of_monad_hom_comp _ _).symm ≪≫
+    algebra_functor_of_monad_hom_eq (by simp) ≪≫
+    algebra_functor_of_monad_hom_id }
+@[simp] lemma algebra_equiv_of_iso_monads_comp_forget {T₁ T₂ : monad C} (h : T₁ ⟶ T₂) :
+  algebra_functor_of_monad_hom h ⋙ forget _ = forget _ :=
+rfl
+end monad
+namespace comonad
+@[nolint has_inhabited_instance]
+structure coalgebra (G : comonad C) : Type (max u₁ v₁) :=
+(A : C)
+(a : A ⟶ (G : C ⥤ C).obj A)
+(counit' : a ≫ G.ε.app A = 𝟙 A . obviously)
+(coassoc' : a ≫ G.δ.app A = a ≫ G.map a . obviously)
+restate_axiom coalgebra.counit'
+restate_axiom coalgebra.coassoc'
+attribute [reassoc] coalgebra.counit coalgebra.coassoc
+namespace coalgebra
+variables {G : comonad C}
+@[ext, nolint has_inhabited_instance] structure hom (A B : coalgebra G) :=
+(f : A.A ⟶ B.A)
+(h' : A.a ≫ (G : C ⥤ C).map f = f ≫ B.a . obviously)
+restate_axiom hom.h'
+attribute [simp, reassoc] hom.h
+namespace hom
+def id (A : coalgebra G) : hom A A :=
+{ f := 𝟙 A.A }
+def comp {P Q R : coalgebra G} (f : hom P Q) (g : hom Q R) : hom P R :=
+{ f := f.f ≫ g.f }
+end hom
+instance : category_struct (coalgebra G) :=
+{ hom := hom,
+  id := hom.id,
+  comp := @hom.comp _ _ _ }
+@[simp] lemma comp_eq_comp {A A' A'' : coalgebra G} (f : A ⟶ A') (g : A' ⟶ A'') :
+  coalgebra.hom.comp f g = f ≫ g := rfl
+@[simp] lemma id_eq_id (A : coalgebra G) :
+  coalgebra.hom.id A = 𝟙 A := rfl
+@[simp] lemma id_f (A : coalgebra G) : (𝟙 A : A ⟶ A).f = 𝟙 A.A := rfl
+@[simp] lemma comp_f {A A' A'' : coalgebra G} (f : A ⟶ A') (g : A' ⟶ A'') :
+  (f ≫ g).f = f.f ≫ g.f := rfl
+instance EilenbergMoore : category (coalgebra G) := {}.
+@[simps]
+def iso_mk {A B : coalgebra G} (h : A.A ≅ B.A) (w : A.a ≫ (G : C ⥤ C).map h.hom = h.hom ≫ B.a) :
+  A ≅ B :=
+{ hom := { f := h.hom },
+  inv :=
+  { f := h.inv,
+    h' := by { rw [h.eq_inv_comp, ←reassoc_of w, ←functor.map_comp], simp } } }
+end coalgebra
+variables (G : comonad C)
+@[simps] def forget : coalgebra G ⥤ C :=
+{ obj := λ A, A.A,
+  map := λ A B f, f.f }
+@[simps] def cofree : C ⥤ coalgebra G :=
+{ obj := λ X,
+  { A := G.obj X,
+    a := G.δ.app X,
+    coassoc' := (G.coassoc _).symm },
+  map := λ X Y f,
+  { f := G.map f,
+    h' := (G.δ.naturality _).symm } }
+lemma coalgebra_iso_of_iso {A B : coalgebra G} (f : A ⟶ B) [is_iso f.f] : is_iso f :=
+⟨⟨{ f := inv f.f,
+    h' := by { rw [is_iso.eq_inv_comp f.f, ←f.h_assoc], simp } }, by tidy⟩⟩
+instance forget_reflects_iso : reflects_isomorphisms G.forget :=
+{ reflects := λ A B, coalgebra_iso_of_iso G }
+instance forget_faithful : faithful (forget G) := {}
+instance : is_left_adjoint G.forget := ⟨_, G.adj⟩
+@[simp] lemma right_adjoint_forget : right_adjoint G.forget = G.cofree := rfl
+@[simp] lemma of_left_adjoint_forget : adjunction.of_left_adjoint G.forget = G.adj := rfl
+end comonad
+end category_theory

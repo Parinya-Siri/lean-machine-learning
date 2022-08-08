@@ -1,0 +1,20 @@
+import algebra.algebra.basic
+import algebra.order.smul
+section ordered_algebra
+variables {R A : Type*} {a b : A} {r : R}
+variables [ordered_comm_ring R] [ordered_ring A] [algebra R A] [ordered_smul R A]
+lemma algebra_map_monotone : monotone (algebra_map R A) :=
+λ a b h,
+begin
+  rw [algebra.algebra_map_eq_smul_one, algebra.algebra_map_eq_smul_one, ←sub_nonneg, ←sub_smul],
+  transitivity (b - a) • (0 : A),
+  { simp, },
+  { exact smul_le_smul_of_nonneg zero_le_one (sub_nonneg.mpr h) }
+end
+end ordered_algebra
+section instances
+variables {R : Type*} [linear_ordered_comm_ring R]
+instance linear_ordered_comm_ring.to_ordered_smul : ordered_smul R R :=
+{ smul_lt_smul_of_pos       := ordered_semiring.mul_lt_mul_of_pos_left,
+  lt_of_smul_lt_smul_of_pos := λ a b c w₁ w₂, (mul_lt_mul_left w₂).mp w₁ }
+end instances

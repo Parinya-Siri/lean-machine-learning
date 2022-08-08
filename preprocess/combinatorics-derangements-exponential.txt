@@ -1,0 +1,10 @@
+import analysis.special_functions.exponential
+import combinatorics.derangements.finite
+import order.filter.basic
+open filter
+open_locale big_operators
+open_locale topological_space
+theorem num_derangements_tendsto_inv_e :
+  tendsto (λ n, (num_derangements n : ℝ) / n.factorial) at_top
+  (𝓝 (real.exp (-1))) :=
+begin

@@ -1,0 +1,44 @@
+import linear_algebra.free_module.rank
+import linear_algebra.free_module.finite.basic
+lemma rank_lt_aleph_0 : module.rank R M < ℵ₀ :=
+begin
+  letI := nontrivial_of_invariant_basis_number R,
+  rw [← (choose_basis R M).mk_eq_dim'', lt_aleph_0_iff_fintype],
+  exact nonempty.intro infer_instance
+end
+@[simp] lemma finrank_eq_rank : ↑(finrank R M) = module.rank R M :=
+by { rw [finrank, cast_to_nat_of_lt_aleph_0 (rank_lt_aleph_0 R M)] }
+lemma finrank_eq_card_choose_basis_index : finrank R M = @card (choose_basis_index R M)
+  (@choose_basis_index.fintype R M _ _ _ _ (nontrivial_of_invariant_basis_number R) _) :=
+begin
+  letI := nontrivial_of_invariant_basis_number R,
+  simp [finrank, rank_eq_card_choose_basis_index]
+end
+@[simp] lemma finrank_finsupp {ι : Type v} [fintype ι] : finrank R (ι →₀ R) = card ι :=
+by { rw [finrank, rank_finsupp, ← mk_to_nat_eq_card, to_nat_lift] }
+lemma finrank_pi {ι : Type v} [fintype ι] : finrank R (ι → R) = card ι :=
+by simp [finrank]
+@[simp] lemma finrank_direct_sum  {ι : Type v} [fintype ι] (M : ι → Type w)
+  [Π (i : ι), add_comm_group (M i)] [Π (i : ι), module R (M i)] [Π (i : ι), module.free R (M i)]
+  [Π (i : ι), module.finite R (M i)] : finrank R (⨁ i, M i) = ∑ i, finrank R (M i) :=
+begin
+  letI := nontrivial_of_invariant_basis_number R,
+  simp only [finrank, λ i, rank_eq_card_choose_basis_index R (M i), rank_direct_sum,
+    ← mk_sigma, mk_to_nat_eq_card, card_sigma],
+end
+@[simp] lemma finrank_prod : finrank R (M × N) = (finrank R M) + (finrank R N) :=
+by { simp [finrank, rank_lt_aleph_0 R M, rank_lt_aleph_0 R N] }
+lemma finrank_matrix (m n : Type v) [fintype m] [fintype n] :
+  finrank R (matrix m n R) = (card m) * (card n) :=
+by { simp [finrank] }
+end ring
+section comm_ring
+variables [comm_ring R] [strong_rank_condition R]
+variables [add_comm_group M] [module R M] [module.free R M] [module.finite R M]
+variables [add_comm_group N] [module R N] [module.free R N] [module.finite R N]
+@[simp] lemma finrank_tensor_product (M : Type v) (N : Type w) [add_comm_group M] [module R M]
+  [module.free R M] [add_comm_group N] [module R N] [module.free R N] :
+finrank R (M ⊗[R] N) = (finrank R M) * (finrank R N) :=
+by { simp [finrank] }
+end comm_ring
+end module.free

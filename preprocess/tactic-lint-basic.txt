@@ -1,0 +1,54 @@
+import tactic.core
+open tactic
+setup_tactic_parser
+section
+local attribute [semireducible] reflected
+private meta def reflect_name_list : has_reflect (list name) | ns :=
+`(id %%(expr.mk_app `(Prop) $ ns.map (flip expr.const [])) : list name)
+private meta def parse_name_list (e : expr) : list name :=
+e.app_arg.get_app_args.map expr.const_name
+local attribute [instance] reflect_name_list
+@[user_attribute]
+meta def nolint_attr : user_attribute (name_map (list name)) (list name) :=
+{ name := "nolint",
+  descr := "Do not report this declaration in any of the tests of `#lint`",
+  after_set := some $ λ n _ _, (do
+    ls@(_::_) ← parse_name_list <$> nolint_attr.get_param_untyped n
+      | fail "you need to specify at least one linter to disable",
+    skip),
+  cache_cfg :=
+  { dependencies := [],
+    mk_cache := list.mfoldl
+      (λ cache d, native.rb_map.insert cache d <$>
+        parse_name_list <$> nolint_attr.get_param_untyped d)
+      mk_name_map },
+  parser := ident* }
+end
+add_tactic_doc
+{ name                     := "nolint",
+  category                 := doc_category.attr,
+  decl_names               := [`nolint_attr],
+  tags                     := ["linting"] }
+meta def should_be_linted (linter : name) (decl : name) : tactic bool := do
+c ← nolint_attr.get_cache,
+pure $ linter ∉ (c.find decl).get_or_else []
+meta structure linter :=
+(test : declaration → tactic (option string))
+(no_errors_found : string)
+(errors_found : string)
+(is_fast : bool := tt)
+(auto_decls : bool)
+meta def get_linters (l : list name) : tactic (list (name × linter)) :=
+l.mmap (λ n, prod.mk n.last <$> (mk_const n >>= eval_expr linter)
+  <|> fail format!"invalid linter: {n}")
+@[user_attribute]
+meta def linter_attr : user_attribute unit unit :=
+{ name := "linter",
+  descr := "Use this declaration as a linting test in #lint",
+  after_set := some $ λ nm _ _,
+                mk_const nm >>= infer_type >>= unify `(linter) }
+add_tactic_doc
+{ name                     := "linter",
+  category                 := doc_category.attr,
+  decl_names               := [`linter_attr],
+  tags                     := ["linting"] }

@@ -1,0 +1,31 @@
+import data.multiset.nodup
+import data.list.nat_antidiagonal
+namespace multiset
+namespace nat
+def antidiagonal (n : ℕ) : multiset (ℕ × ℕ) :=
+list.nat.antidiagonal n
+@[simp] lemma mem_antidiagonal {n : ℕ} {x : ℕ × ℕ} :
+  x ∈ antidiagonal n ↔ x.1 + x.2 = n :=
+by rw [antidiagonal, mem_coe, list.nat.mem_antidiagonal]
+@[simp] lemma card_antidiagonal (n : ℕ) : (antidiagonal n).card = n+1 :=
+by rw [antidiagonal, coe_card, list.nat.length_antidiagonal]
+@[simp] lemma antidiagonal_zero : antidiagonal 0 = {(0, 0)} :=
+rfl
+@[simp] lemma nodup_antidiagonal (n : ℕ) : nodup (antidiagonal n) :=
+coe_nodup.2 $ list.nat.nodup_antidiagonal n
+@[simp] lemma antidiagonal_succ {n : ℕ} :
+  antidiagonal (n + 1) = (0, n + 1) ::ₘ ((antidiagonal n).map (prod.map nat.succ id)) :=
+by simp only [antidiagonal, list.nat.antidiagonal_succ, coe_map, cons_coe]
+lemma antidiagonal_succ' {n : ℕ} :
+  antidiagonal (n + 1) = (n + 1, 0) ::ₘ ((antidiagonal n).map (prod.map id nat.succ)) :=
+by rw [antidiagonal, list.nat.antidiagonal_succ', ← coe_add, add_comm, antidiagonal, coe_map,
+  coe_add, list.singleton_append, cons_coe]
+lemma antidiagonal_succ_succ' {n : ℕ} :
+  antidiagonal (n + 2) =
+  (0, n + 2) ::ₘ (n + 2, 0) ::ₘ ((antidiagonal n).map (prod.map nat.succ nat.succ)) :=
+by { rw [antidiagonal_succ, antidiagonal_succ', map_cons, map_map, prod_map], refl }
+lemma map_swap_antidiagonal {n : ℕ} :
+  (antidiagonal n).map prod.swap = antidiagonal n :=
+by rw [antidiagonal, coe_map, list.nat.map_swap_antidiagonal, coe_reverse]
+end nat
+end multiset

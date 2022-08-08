@@ -1,0 +1,347 @@
+import analysis.normed.group.infinite_sum
+import topology.algebra.module.basic
+import topology.instances.ennreal
+import topology.instances.rat
+variables {α : Type*} {β : Type*} {γ : Type*} {ι : Type*}
+noncomputable theory
+open filter metric
+open_locale topological_space big_operators nnreal ennreal uniformity pointwise
+class non_unital_semi_normed_ring (α : Type*)
+  extends has_norm α, non_unital_ring α, pseudo_metric_space α :=
+(dist_eq : ∀ x y, dist x y = norm (x - y))
+(norm_mul : ∀ a b, norm (a * b) ≤ norm a * norm b)
+class semi_normed_ring (α : Type*) extends has_norm α, ring α, pseudo_metric_space α :=
+(dist_eq : ∀ x y, dist x y = norm (x - y))
+(norm_mul : ∀ a b, norm (a * b) ≤ norm a * norm b)
+class non_unital_normed_ring (α : Type*) extends has_norm α, non_unital_ring α, metric_space α :=
+(dist_eq : ∀ x y, dist x y = norm (x - y))
+(norm_mul : ∀ a b, norm (a * b) ≤ norm a * norm b)
+class normed_ring (α : Type*) extends has_norm α, ring α, metric_space α :=
+(dist_eq : ∀ x y, dist x y = norm (x - y))
+(norm_mul : ∀ a b, norm (a * b) ≤ norm a * norm b)
+class normed_division_ring (α : Type*) extends has_norm α, division_ring α, metric_space α :=
+(dist_eq : ∀ x y, dist x y = norm (x - y))
+(norm_mul' : ∀ a b, norm (a * b) = norm a * norm b)
+class semi_normed_comm_ring (α : Type*) extends semi_normed_ring α :=
+(mul_comm : ∀ x y : α, x * y = y * x)
+class normed_comm_ring (α : Type*) extends normed_ring α :=
+(mul_comm : ∀ x y : α, x * y = y * x)
+class norm_one_class (α : Type*) [has_norm α] [has_one α] : Prop :=
+(norm_one : ∥(1:α)∥ = 1)
+export norm_one_class (norm_one)
+attribute [simp] norm_one
+@[simp] lemma nnnorm_one [semi_normed_group α] [has_one α] [norm_one_class α] : ∥(1 : α)∥₊ = 1 :=
+nnreal.eq norm_one
+lemma norm_one_class.nontrivial (α : Type*) [semi_normed_group α] [has_one α] [norm_one_class α] :
+  nontrivial α :=
+nontrivial_of_ne 0 1 $ ne_of_apply_ne norm $ by simp
+lemma mul_left_bound (x : α) :
+  ∀ (y:α), ∥add_monoid_hom.mul_left x y∥ ≤ ∥x∥ * ∥y∥ :=
+norm_mul_le x
+lemma mul_right_bound (x : α) :
+  ∀ (y:α), ∥add_monoid_hom.mul_right x y∥ ≤ ∥x∥ * ∥y∥ :=
+λ y, by {rw mul_comm, convert norm_mul_le y x}
+instance : non_unital_semi_normed_ring (ulift α) :=
+{ norm_mul := λ x y, (norm_mul_le x.down y.down : _),
+  .. ulift.semi_normed_group }
+instance prod.non_unital_semi_normed_ring [non_unital_semi_normed_ring β] :
+  non_unital_semi_normed_ring (α × β) :=
+{ norm_mul := assume x y,
+  calc
+    ∥x * y∥ = ∥(x.1*y.1, x.2*y.2)∥ : rfl
+        ... = (max ∥x.1*y.1∥  ∥x.2*y.2∥) : rfl
+        ... ≤ (max (∥x.1∥*∥y.1∥) (∥x.2∥*∥y.2∥)) :
+          max_le_max (norm_mul_le (x.1) (y.1)) (norm_mul_le (x.2) (y.2))
+        ... = (max (∥x.1∥*∥y.1∥) (∥y.2∥*∥x.2∥)) : by simp[mul_comm]
+        ... ≤ (max (∥x.1∥) (∥x.2∥)) * (max (∥y.2∥) (∥y.1∥)) :
+          by apply max_mul_mul_le_max_mul_max; simp [norm_nonneg]
+        ... = (max (∥x.1∥) (∥x.2∥)) * (max (∥y.1∥) (∥y.2∥)) : by simp [max_comm]
+        ... = (∥x∥*∥y∥) : rfl,
+  ..prod.semi_normed_group }
+instance pi.non_unital_semi_normed_ring {π : ι → Type*} [fintype ι]
+  [Π i, non_unital_semi_normed_ring (π i)] :
+  non_unital_semi_normed_ring (Π i, π i) :=
+{ norm_mul := λ x y, nnreal.coe_mono $
+    calc  finset.univ.sup (λ i, ∥x i * y i∥₊)
+        ≤ finset.univ.sup ((λ i, ∥x i∥₊) * (λ i, ∥y i∥₊)) :
+            finset.sup_mono_fun $ λ b hb, norm_mul_le _ _
+    ... ≤ finset.univ.sup (λ i, ∥x i∥₊) * finset.univ.sup (λ i, ∥y i∥₊) :
+            finset.sup_mul_le_mul_sup_of_nonneg _ (λ i _, zero_le _) (λ i _, zero_le _),
+  ..pi.semi_normed_group }
+end non_unital_semi_normed_ring
+section semi_normed_ring
+variables [semi_normed_ring α]
+instance subalgebra.semi_normed_ring {𝕜 : Type*} {_ : comm_ring 𝕜}
+  {E : Type*} [semi_normed_ring E] {_ : algebra 𝕜 E} (s : subalgebra 𝕜 E) : semi_normed_ring s :=
+{ norm_mul := λ a b, norm_mul_le a.1 b.1,
+  ..s.to_submodule.semi_normed_group }
+instance subalgebra.normed_ring {𝕜 : Type*} {_ : comm_ring 𝕜}
+  {E : Type*} [normed_ring E] {_ : algebra 𝕜 E} (s : subalgebra 𝕜 E) : normed_ring s :=
+{ ..s.semi_normed_ring }
+lemma nat.norm_cast_le : ∀ n : ℕ, ∥(n : α)∥ ≤ n * ∥(1 : α)∥
+| 0 := by simp
+| (n + 1) := by { rw [n.cast_succ, n.cast_succ, add_mul, one_mul],
+                  exact norm_add_le_of_le (nat.norm_cast_le n) le_rfl }
+lemma list.norm_prod_le' : ∀ {l : list α}, l ≠ [] → ∥l.prod∥ ≤ (l.map norm).prod
+| [] h := (h rfl).elim
+| [a] _ := by simp
+| (a :: b :: l) _ :=
+  begin
+    rw [list.map_cons, list.prod_cons, @list.prod_cons _ _ _ ∥a∥],
+    refine le_trans (norm_mul_le _ _) (mul_le_mul_of_nonneg_left _ (norm_nonneg _)),
+    exact list.norm_prod_le' (list.cons_ne_nil b l)
+  end
+lemma list.nnnorm_prod_le' {l : list α} (hl : l ≠ []) : ∥l.prod∥₊ ≤ (l.map nnnorm).prod :=
+(list.norm_prod_le' hl).trans_eq $ by simp [nnreal.coe_list_prod, list.map_map]
+lemma list.norm_prod_le [norm_one_class α] : ∀ l : list α, ∥l.prod∥ ≤ (l.map norm).prod
+| [] := by simp
+| (a::l) := list.norm_prod_le' (list.cons_ne_nil a l)
+lemma list.nnnorm_prod_le [norm_one_class α] (l : list α) : ∥l.prod∥₊ ≤ (l.map nnnorm).prod :=
+l.norm_prod_le.trans_eq $ by simp [nnreal.coe_list_prod, list.map_map]
+lemma finset.norm_prod_le' {α : Type*} [normed_comm_ring α] (s : finset ι) (hs : s.nonempty)
+  (f : ι → α) :
+  ∥∏ i in s, f i∥ ≤ ∏ i in s, ∥f i∥ :=
+begin
+  rcases s with ⟨⟨l⟩, hl⟩,
+  have : l.map f ≠ [], by simpa using hs,
+  simpa using list.norm_prod_le' this
+end
+lemma finset.nnnorm_prod_le' {α : Type*} [normed_comm_ring α] (s : finset ι) (hs : s.nonempty)
+  (f : ι → α) :
+  ∥∏ i in s, f i∥₊ ≤ ∏ i in s, ∥f i∥₊ :=
+(s.norm_prod_le' hs f).trans_eq $ by simp [nnreal.coe_prod]
+lemma finset.norm_prod_le {α : Type*} [normed_comm_ring α] [norm_one_class α] (s : finset ι)
+  (f : ι → α) :
+  ∥∏ i in s, f i∥ ≤ ∏ i in s, ∥f i∥ :=
+begin
+  rcases s with ⟨⟨l⟩, hl⟩,
+  simpa using (l.map f).norm_prod_le
+end
+lemma finset.nnnorm_prod_le {α : Type*} [normed_comm_ring α] [norm_one_class α] (s : finset ι)
+  (f : ι → α) :
+  ∥∏ i in s, f i∥₊ ≤ ∏ i in s, ∥f i∥₊ :=
+(s.norm_prod_le f).trans_eq $ by simp [nnreal.coe_prod]
+lemma nnnorm_pow_le' (a : α) : ∀ {n : ℕ}, 0 < n → ∥a ^ n∥₊ ≤ ∥a∥₊ ^ n
+| 1 h := by simp only [pow_one]
+| (n + 2) h := by simpa only [pow_succ _ (n + 1)] using
+    le_trans (nnnorm_mul_le _ _) (mul_le_mul_left' (nnnorm_pow_le' n.succ_pos) _)
+lemma nnnorm_pow_le [norm_one_class α] (a : α) (n : ℕ) : ∥a ^ n∥₊ ≤ ∥a∥₊ ^ n :=
+nat.rec_on n (by simp only [pow_zero, nnnorm_one]) (λ k hk, nnnorm_pow_le' a k.succ_pos)
+lemma norm_pow_le' (a : α) {n : ℕ} (h : 0 < n) : ∥a ^ n∥ ≤ ∥a∥ ^ n :=
+by simpa only [nnreal.coe_pow, coe_nnnorm] using nnreal.coe_mono (nnnorm_pow_le' a h)
+lemma norm_pow_le [norm_one_class α] (a : α) (n : ℕ) : ∥a ^ n∥ ≤ ∥a∥ ^ n :=
+nat.rec_on n (by simp only [pow_zero, norm_one]) (λ n hn, norm_pow_le' a n.succ_pos)
+lemma eventually_norm_pow_le (a : α) : ∀ᶠ (n:ℕ) in at_top, ∥a ^ n∥ ≤ ∥a∥ ^ n :=
+eventually_at_top.mpr ⟨1, λ b h, norm_pow_le' a (nat.succ_le_iff.mp h)⟩
+instance : semi_normed_ring (ulift α) :=
+{ .. ulift.non_unital_semi_normed_ring,
+  .. ulift.semi_normed_group }
+instance prod.semi_normed_ring [semi_normed_ring β] :
+  semi_normed_ring (α × β) :=
+{ ..prod.non_unital_semi_normed_ring,
+  ..prod.semi_normed_group, }
+instance pi.semi_normed_ring {π : ι → Type*} [fintype ι] [Π i, semi_normed_ring (π i)] :
+  semi_normed_ring (Π i, π i) :=
+{ ..pi.non_unital_semi_normed_ring,
+  ..pi.semi_normed_group, }
+end semi_normed_ring
+section non_unital_normed_ring
+variables [non_unital_normed_ring α]
+instance : non_unital_normed_ring (ulift α) :=
+{ .. ulift.non_unital_semi_normed_ring,
+  .. ulift.semi_normed_group }
+instance prod.non_unital_normed_ring [non_unital_normed_ring β] : non_unital_normed_ring (α × β) :=
+{ norm_mul := norm_mul_le,
+  ..prod.semi_normed_group }
+instance pi.non_unital_normed_ring {π : ι → Type*} [fintype ι] [Π i, non_unital_normed_ring (π i)] :
+  non_unital_normed_ring (Π i, π i) :=
+{ norm_mul := norm_mul_le,
+  ..pi.normed_group }
+end non_unital_normed_ring
+section normed_ring
+variables [normed_ring α]
+lemma units.norm_pos [nontrivial α] (x : αˣ) : 0 < ∥(x:α)∥ :=
+norm_pos_iff.mpr (units.ne_zero x)
+lemma units.nnnorm_pos [nontrivial α] (x : αˣ) : 0 < ∥(x:α)∥₊ :=
+x.norm_pos
+instance : normed_ring (ulift α) :=
+{ .. ulift.semi_normed_ring,
+  .. ulift.normed_group }
+instance prod.normed_ring [normed_ring β] : normed_ring (α × β) :=
+{ norm_mul := norm_mul_le,
+  ..prod.normed_group }
+instance pi.normed_ring {π : ι → Type*} [fintype ι] [Π i, normed_ring (π i)] :
+  normed_ring (Π i, π i) :=
+{ norm_mul := norm_mul_le,
+  ..pi.normed_group }
+end normed_ring
+@[simps] def norm_hom : α →*₀ ℝ := ⟨norm, norm_zero, norm_one, norm_mul⟩
+@[simps] def nnnorm_hom : α →*₀ ℝ≥0 := ⟨nnnorm, nnnorm_zero, nnnorm_one, nnnorm_mul⟩
+@[simp] lemma norm_pow (a : α) : ∀ (n : ℕ), ∥a ^ n∥ = ∥a∥ ^ n :=
+(norm_hom.to_monoid_hom : α →* ℝ).map_pow a
+@[simp] lemma nnnorm_pow (a : α) (n : ℕ) : ∥a ^ n∥₊ = ∥a∥₊ ^ n :=
+(nnnorm_hom.to_monoid_hom : α →* ℝ≥0).map_pow a n
+protected lemma list.norm_prod (l : list α) : ∥l.prod∥ = (l.map norm).prod :=
+(norm_hom.to_monoid_hom : α →* ℝ).map_list_prod _
+protected lemma list.nnnorm_prod (l : list α) : ∥l.prod∥₊ = (l.map nnnorm).prod :=
+(nnnorm_hom.to_monoid_hom : α →* ℝ≥0).map_list_prod _
+@[simp] lemma norm_div (a b : α) : ∥a / b∥ = ∥a∥ / ∥b∥ := (norm_hom : α →*₀ ℝ).map_div a b
+@[simp] lemma nnnorm_div (a b : α) : ∥a / b∥₊ = ∥a∥₊ / ∥b∥₊ := (nnnorm_hom : α →*₀ ℝ≥0).map_div a b
+@[simp] lemma norm_inv (a : α) : ∥a⁻¹∥ = ∥a∥⁻¹ := (norm_hom : α →*₀ ℝ).map_inv a
+@[simp] lemma nnnorm_inv (a : α) : ∥a⁻¹∥₊ = ∥a∥₊⁻¹ :=
+nnreal.eq $ by simp
+@[simp] lemma norm_zpow : ∀ (a : α) (n : ℤ), ∥a^n∥ = ∥a∥^n := (norm_hom : α →*₀ ℝ).map_zpow
+@[simp] lemma nnnorm_zpow : ∀ (a : α) (n : ℤ), ∥a ^ n∥₊ = ∥a∥₊ ^ n :=
+(nnnorm_hom : α →*₀ ℝ≥0).map_zpow
+lemma filter.tendsto_mul_left_cobounded {a : α} (ha : a ≠ 0) :
+  tendsto ((*) a) (comap norm at_top) (comap norm at_top) :=
+by simpa only [tendsto_comap_iff, (∘), norm_mul]
+  using tendsto_const_nhds.mul_at_top (norm_pos_iff.2 ha) tendsto_comap
+lemma filter.tendsto_mul_right_cobounded {a : α} (ha : a ≠ 0) :
+  tendsto (λ x, x * a) (comap norm at_top) (comap norm at_top) :=
+by simpa only [tendsto_comap_iff, (∘), norm_mul]
+  using tendsto_comap.at_top_mul (norm_pos_iff.2 ha) tendsto_const_nhds
+class normed_field (α : Type*) extends has_norm α, field α, metric_space α :=
+(dist_eq : ∀ x y, dist x y = norm (x - y))
+(norm_mul' : ∀ a b, norm (a * b) = norm a * norm b)
+class nondiscrete_normed_field (α : Type*) extends normed_field α :=
+(non_trivial : ∃ x : α, 1 < ∥x∥)
+section normed_field
+variables [normed_field α]
+instance punctured_nhds_module_ne_bot
+  {E : Type*} [add_comm_group E] [topological_space E] [has_continuous_add E] [nontrivial E]
+  [module ℝ E] [has_continuous_smul ℝ E] (x : E) :
+  ne_bot (𝓝[≠] x) :=
+module.punctured_nhds_ne_bot ℝ E x
+end real
+namespace nnreal
+open_locale nnreal
+@[simp] lemma norm_eq (x : ℝ≥0) : ∥(x : ℝ)∥ = x :=
+by rw [real.norm_eq_abs, x.abs_eq]
+@[simp] lemma nnnorm_eq (x : ℝ≥0) : ∥(x : ℝ)∥₊ = x :=
+nnreal.eq $ real.norm_of_nonneg x.2
+end nnreal
+@[simp] lemma norm_norm [semi_normed_group α] (x : α) : ∥∥x∥∥ = ∥x∥ :=
+real.norm_of_nonneg (norm_nonneg _)
+@[simp] lemma nnnorm_norm [semi_normed_group α] (a : α) : ∥∥a∥∥₊ = ∥a∥₊ :=
+by simpa [real.nnnorm_of_nonneg (norm_nonneg a)]
+lemma normed_group.tendsto_at_top [nonempty α] [semilattice_sup α] {β : Type*} [semi_normed_group β]
+  {f : α → β} {b : β} :
+  tendsto f at_top (𝓝 b) ↔ ∀ ε, 0 < ε → ∃ N, ∀ n, N ≤ n → ∥f n - b∥ < ε :=
+(at_top_basis.tendsto_iff metric.nhds_basis_ball).trans (by simp [dist_eq_norm])
+lemma normed_group.tendsto_at_top' [nonempty α] [semilattice_sup α] [no_max_order α]
+  {β : Type*} [semi_normed_group β]
+  {f : α → β} {b : β} :
+  tendsto f at_top (𝓝 b) ↔ ∀ ε, 0 < ε → ∃ N, ∀ n, N < n → ∥f n - b∥ < ε :=
+(at_top_basis_Ioi.tendsto_iff metric.nhds_basis_ball).trans (by simp [dist_eq_norm])
+instance : normed_comm_ring ℤ :=
+{ norm := λ n, ∥(n : ℝ)∥,
+  norm_mul := λ m n, le_of_eq $ by simp only [norm, int.cast_mul, abs_mul],
+  dist_eq := λ m n, by simp only [int.dist_eq, norm, int.cast_sub],
+  mul_comm := mul_comm }
+@[norm_cast] lemma int.norm_cast_real (m : ℤ) : ∥(m : ℝ)∥ = ∥m∥ := rfl
+lemma int.norm_eq_abs (n : ℤ) : ∥n∥ = |n| := rfl
+lemma nnreal.coe_nat_abs (n : ℤ) : (n.nat_abs : ℝ≥0) = ∥n∥₊ :=
+nnreal.eq $ calc ((n.nat_abs : ℝ≥0) : ℝ)
+               = (n.nat_abs : ℤ) : by simp only [int.cast_coe_nat, nnreal.coe_nat_cast]
+           ... = |n|           : by simp only [← int.abs_eq_nat_abs, int.cast_abs]
+           ... = ∥n∥              : rfl
+lemma int.abs_le_floor_nnreal_iff (z : ℤ) (c : ℝ≥0) : |z| ≤ ⌊c⌋₊ ↔ ∥z∥₊ ≤ c :=
+begin
+  rw [int.abs_eq_nat_abs, int.coe_nat_le, nat.le_floor_iff (zero_le c)],
+  congr',
+  exact nnreal.coe_nat_abs z,
+end
+instance : norm_one_class ℤ :=
+⟨by simp [← int.norm_cast_real]⟩
+instance : normed_field ℚ :=
+{ norm := λ r, ∥(r : ℝ)∥,
+  norm_mul' := λ r₁ r₂, by simp only [norm, rat.cast_mul, abs_mul],
+  dist_eq := λ r₁ r₂, by simp only [rat.dist_eq, norm, rat.cast_sub] }
+instance : nondiscrete_normed_field ℚ :=
+{ non_trivial := ⟨2, by { unfold norm, rw abs_of_nonneg; norm_num }⟩ }
+@[norm_cast, simp] lemma rat.norm_cast_real (r : ℚ) : ∥(r : ℝ)∥ = ∥r∥ := rfl
+@[norm_cast, simp] lemma int.norm_cast_rat (m : ℤ) : ∥(m : ℚ)∥ = ∥m∥ :=
+by rw [← rat.norm_cast_real, ← int.norm_cast_real]; congr' 1; norm_cast
+variables {ι' : Type*} [normed_ring α]
+open finset
+open_locale classical
+lemma summable.mul_of_nonneg {f : ι → ℝ} {g : ι' → ℝ}
+  (hf : summable f) (hg : summable g) (hf' : 0 ≤ f) (hg' : 0 ≤ g) :
+  summable (λ (x : ι × ι'), f x.1 * g x.2) :=
+let ⟨s, hf⟩ := hf in
+let ⟨t, hg⟩ := hg in
+suffices this : ∀ u : finset (ι × ι'), ∑ x in u, f x.1 * g x.2 ≤ s*t,
+  from summable_of_sum_le (λ x, mul_nonneg (hf' _) (hg' _)) this,
+assume u,
+calc  ∑ x in u, f x.1 * g x.2
+    ≤ ∑ x in (u.image prod.fst).product (u.image prod.snd), f x.1 * g x.2 :
+      sum_mono_set_of_nonneg (λ x, mul_nonneg (hf' _) (hg' _)) subset_product
+... = ∑ x in u.image prod.fst, ∑ y in u.image prod.snd, f x * g y : sum_product
+... = ∑ x in u.image prod.fst, f x * ∑ y in u.image prod.snd, g y :
+      sum_congr rfl (λ x _, mul_sum.symm)
+... ≤ ∑ x in u.image prod.fst, f x * t :
+      sum_le_sum
+        (λ x _, mul_le_mul_of_nonneg_left (sum_le_has_sum _ (λ _ _, hg' _) hg) (hf' _))
+... = (∑ x in u.image prod.fst, f x) * t : sum_mul.symm
+... ≤ s * t :
+      mul_le_mul_of_nonneg_right (sum_le_has_sum _ (λ _ _, hf' _) hf) (hg.nonneg $ λ _, hg' _)
+lemma summable.mul_norm {f : ι → α} {g : ι' → α}
+  (hf : summable (λ x, ∥f x∥)) (hg : summable (λ x, ∥g x∥)) :
+  summable (λ (x : ι × ι'), ∥f x.1 * g x.2∥) :=
+summable_of_nonneg_of_le (λ x, norm_nonneg (f x.1 * g x.2)) (λ x, norm_mul_le (f x.1) (g x.2))
+  (hf.mul_of_nonneg hg (λ x, norm_nonneg $ f x) (λ x, norm_nonneg $ g x) : _)
+lemma summable_mul_of_summable_norm [complete_space α] {f : ι → α} {g : ι' → α}
+  (hf : summable (λ x, ∥f x∥)) (hg : summable (λ x, ∥g x∥)) :
+  summable (λ (x : ι × ι'), f x.1 * g x.2) :=
+summable_of_summable_norm (hf.mul_norm hg)
+lemma tsum_mul_tsum_of_summable_norm [complete_space α] {f : ι → α} {g : ι' → α}
+  (hf : summable (λ x, ∥f x∥)) (hg : summable (λ x, ∥g x∥)) :
+  (∑' x, f x) * (∑' y, g y) = (∑' z : ι × ι', f z.1 * g z.2) :=
+tsum_mul_tsum (summable_of_summable_norm hf) (summable_of_summable_norm hg)
+  (summable_mul_of_summable_norm hf hg)
+section nat
+open finset.nat
+lemma summable_norm_sum_mul_antidiagonal_of_summable_norm {f g : ℕ → α}
+  (hf : summable (λ x, ∥f x∥)) (hg : summable (λ x, ∥g x∥)) :
+  summable (λ n, ∥∑ kl in antidiagonal n, f kl.1 * g kl.2∥) :=
+begin
+  have := summable_sum_mul_antidiagonal_of_summable_mul
+    (summable.mul_of_nonneg hf hg (λ _, norm_nonneg _) (λ _, norm_nonneg _)),
+  refine summable_of_nonneg_of_le (λ _, norm_nonneg _) _ this,
+  intros n,
+  calc  ∥∑ kl in antidiagonal n, f kl.1 * g kl.2∥
+      ≤ ∑ kl in antidiagonal n, ∥f kl.1 * g kl.2∥ : norm_sum_le _ _
+  ... ≤ ∑ kl in antidiagonal n, ∥f kl.1∥ * ∥g kl.2∥ : sum_le_sum (λ i _, norm_mul_le _ _)
+end
+lemma tsum_mul_tsum_eq_tsum_sum_antidiagonal_of_summable_norm [complete_space α] {f g : ℕ → α}
+  (hf : summable (λ x, ∥f x∥)) (hg : summable (λ x, ∥g x∥)) :
+  (∑' n, f n) * (∑' n, g n) = ∑' n, ∑ kl in antidiagonal n, f kl.1 * g kl.2 :=
+tsum_mul_tsum_eq_tsum_sum_antidiagonal (summable_of_summable_norm hf) (summable_of_summable_norm hg)
+  (summable_mul_of_summable_norm hf hg)
+lemma summable_norm_sum_mul_range_of_summable_norm {f g : ℕ → α}
+  (hf : summable (λ x, ∥f x∥)) (hg : summable (λ x, ∥g x∥)) :
+  summable (λ n, ∥∑ k in range (n+1), f k * g (n - k)∥) :=
+begin
+  simp_rw ← sum_antidiagonal_eq_sum_range_succ (λ k l, f k * g l),
+  exact summable_norm_sum_mul_antidiagonal_of_summable_norm hf hg
+end
+lemma tsum_mul_tsum_eq_tsum_sum_range_of_summable_norm [complete_space α] {f g : ℕ → α}
+  (hf : summable (λ x, ∥f x∥)) (hg : summable (λ x, ∥g x∥)) :
+  (∑' n, f n) * (∑' n, g n) = ∑' n, ∑ k in range (n+1), f k * g (n - k) :=
+begin
+  simp_rw ← sum_antidiagonal_eq_sum_range_succ (λ k l, f k * g l),
+  exact tsum_mul_tsum_eq_tsum_sum_antidiagonal_of_summable_norm hf hg
+end
+end nat
+end cauchy_product
+section ring_hom_isometric
+variables {R₁ : Type*} {R₂ : Type*} {R₃ : Type*}
+class ring_hom_isometric [semiring R₁] [semiring R₂] [has_norm R₁] [has_norm R₂]
+  (σ : R₁ →+* R₂) : Prop :=
+(is_iso : ∀ {x : R₁}, ∥σ x∥ = ∥x∥)
+attribute [simp] ring_hom_isometric.is_iso
+variables [semi_normed_ring R₁] [semi_normed_ring R₂] [semi_normed_ring R₃]
+instance ring_hom_isometric.ids : ring_hom_isometric (ring_hom.id R₁) :=
+⟨λ x, rfl⟩
+end ring_hom_isometric
