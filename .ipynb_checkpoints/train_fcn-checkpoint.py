@@ -25,13 +25,7 @@ data_path = './matlib'
 preprocess_path = './preprocess'
 
 #### Generate txt files #########################
-data_path = './matlib'
-preprocess_path = './preprocess'
-p = glob.glob(data_path + '/*', recursive = True)
-for path in p:
-    for filename in glob.glob(os.path.join(path, '*.lean')):
-        util.preprocess(filename, preprocess_path, data_path)
-    
+util.preprocess(preprocess_path,data_path)
 ###################Set layers##############################
 layers = [int(j) for j in sys.argv[1:]]
 
