@@ -1,4 +1,4 @@
-# Dissertation Codebase: Predicting Lean Proof Lines Using Neural Networks and GPT-2
+# Dissertation Codebase: Language Models for Mathematical Theorem Proving
 
 This repository contains the code, models, and training data associated with the experiments conducted for my dissertation research. The primary goal of this project is to investigate the capability of neural language models—specifically a fully connected neural network (FCN) and a GPT-2–based transformer model—to predict the next line of a Lean proof given several preceding lines. By comparing these two architectures, we aim to understand their relative strengths and weaknesses in modeling formal mathematical language and structure.
 
